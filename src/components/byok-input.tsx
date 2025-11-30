@@ -6,6 +6,12 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Eye, EyeOff } from 'lucide-react'
 
+/**
+ * Component for managing the User's OpenAI API Key locally (BYOK).
+ * Stores the key in LocalStorage and never sends it to the server unencrypted.
+ *
+ * @returns The BYOK Input component.
+ */
 export function ByokInput() {
   const [key, setKey] = useState('')
   const [isVisible, setIsVisible] = useState(false)

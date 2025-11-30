@@ -13,6 +13,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
+/**
+ * Root Command component (cmdk wrapper).
+ *
+ * @param props - Props for the Command component.
+ * @returns The rendered Command component.
+ */
 function Command({
   className,
   ...props
@@ -29,6 +35,15 @@ function Command({
   )
 }
 
+/**
+ * Command Palette Modal.
+ *
+ * @param props - Props for the Dialog and Command.
+ * @param props.title - The title of the dialog.
+ * @param props.description - The description of the dialog.
+ * @param props.showCloseButton - Whether to show the close button.
+ * @returns The rendered Command Dialog.
+ */
 function CommandDialog({
   title = "Command Palette",
   description = "Search for a command to run...",
@@ -60,6 +75,12 @@ function CommandDialog({
   )
 }
 
+/**
+ * Input field for the Command component.
+ *
+ * @param props - Props for the Command Input.
+ * @returns The rendered Command Input.
+ */
 function CommandInput({
   className,
   ...props
@@ -82,6 +103,12 @@ function CommandInput({
   )
 }
 
+/**
+ * List container for Command items.
+ *
+ * @param props - Props for the Command List.
+ * @returns The rendered Command List.
+ */
 function CommandList({
   className,
   ...props
@@ -98,6 +125,12 @@ function CommandList({
   )
 }
 
+/**
+ * Component displayed when no Command items match the search.
+ *
+ * @param props - Props for the Command Empty state.
+ * @returns The rendered Command Empty component.
+ */
 function CommandEmpty({
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Empty>) {
@@ -110,6 +143,12 @@ function CommandEmpty({
   )
 }
 
+/**
+ * Group of Command items.
+ *
+ * @param props - Props for the Command Group.
+ * @returns The rendered Command Group.
+ */
 function CommandGroup({
   className,
   ...props
@@ -126,6 +165,12 @@ function CommandGroup({
   )
 }
 
+/**
+ * Separator between Command items or groups.
+ *
+ * @param props - Props for the Command Separator.
+ * @returns The rendered Command Separator.
+ */
 function CommandSeparator({
   className,
   ...props
@@ -139,6 +184,12 @@ function CommandSeparator({
   )
 }
 
+/**
+ * Individual item in the Command list.
+ *
+ * @param props - Props for the Command Item.
+ * @returns The rendered Command Item.
+ */
 function CommandItem({
   className,
   ...props
@@ -155,6 +206,12 @@ function CommandItem({
   )
 }
 
+/**
+ * Shortcut key hint for a Command Item.
+ *
+ * @param props - Props for the span element.
+ * @returns The rendered Command Shortcut.
+ */
 function CommandShortcut({
   className,
   ...props

@@ -1,3 +1,7 @@
+/**
+ * Pricing rates for various AI models per 1 million tokens.
+ * Values are in USD.
+ */
 export const MODEL_RATES: Record<string, { input: number; output: number }> = {
     'openai/gpt-4o': { input: 5.00, output: 15.00 },
     'openai/gpt-4-turbo': { input: 10.00, output: 30.00 },
@@ -11,4 +15,7 @@ export const MODEL_RATES: Record<string, { input: number; output: number }> = {
     'mistralai/mistral-large': { input: 8.00, output: 24.00 },
 };
 
+/**
+ * Default pricing rate used when a specific model rate is not found.
+ */
 export const DEFAULT_RATE = { input: 1.00, output: 1.00 }; // Fallback

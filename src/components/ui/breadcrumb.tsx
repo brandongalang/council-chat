@@ -4,10 +4,22 @@ import { ChevronRight, MoreHorizontal } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * Root navigation component for Breadcrumbs.
+ *
+ * @param props - Props for the nav element.
+ * @returns The rendered Breadcrumb nav.
+ */
 function Breadcrumb({ ...props }: React.ComponentProps<"nav">) {
   return <nav aria-label="breadcrumb" data-slot="breadcrumb" {...props} />
 }
 
+/**
+ * Ordered list container for Breadcrumb items.
+ *
+ * @param props - Props for the ol element.
+ * @returns The rendered Breadcrumb list.
+ */
 function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
   return (
     <ol
@@ -21,6 +33,12 @@ function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
   )
 }
 
+/**
+ * Individual item within the Breadcrumb list.
+ *
+ * @param props - Props for the li element.
+ * @returns The rendered Breadcrumb item.
+ */
 function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
   return (
     <li
@@ -31,13 +49,25 @@ function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
   )
 }
 
+/**
+ * Props for the BreadcrumbLink component.
+ */
+export interface BreadcrumbLinkProps extends React.ComponentProps<"a"> {
+  /** If true, renders as a child component. */
+  asChild?: boolean
+}
+
+/**
+ * Link component for a Breadcrumb item.
+ *
+ * @param props - Props for the Breadcrumb Link.
+ * @returns The rendered Breadcrumb link.
+ */
 function BreadcrumbLink({
   asChild,
   className,
   ...props
-}: React.ComponentProps<"a"> & {
-  asChild?: boolean
-}) {
+}: BreadcrumbLinkProps) {
   const Comp = asChild ? Slot : "a"
 
   return (
@@ -49,6 +79,12 @@ function BreadcrumbLink({
   )
 }
 
+/**
+ * Component representing the current page in the Breadcrumb.
+ *
+ * @param props - Props for the span element.
+ * @returns The rendered Breadcrumb page.
+ */
 function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
@@ -62,6 +98,12 @@ function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
   )
 }
 
+/**
+ * Separator component between Breadcrumb items.
+ *
+ * @param props - Props for the separator.
+ * @returns The rendered separator.
+ */
 function BreadcrumbSeparator({
   children,
   className,
@@ -80,6 +122,12 @@ function BreadcrumbSeparator({
   )
 }
 
+/**
+ * Ellipsis component for truncated Breadcrumbs.
+ *
+ * @param props - Props for the ellipsis.
+ * @returns The rendered ellipsis.
+ */
 function BreadcrumbEllipsis({
   className,
   ...props

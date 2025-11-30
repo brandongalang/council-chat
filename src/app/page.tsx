@@ -2,6 +2,12 @@ import Link from 'next/link'
 import { ByokInput } from '@/components/byok-input'
 import { Button } from '@/components/ui/button'
 
+/**
+ * Landing page component.
+ * Displays the welcome message and access to BYOK input or Login.
+ *
+ * @returns The rendered landing page.
+ */
 export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-24 gap-8">

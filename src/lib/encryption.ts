@@ -1,8 +1,16 @@
 import crypto from 'crypto';
 
+/** Encryption algorithm used (AES-256-GCM). */
 const ALGORITHM = 'aes-256-gcm';
+/** Length of the initialization vector in bytes. */
 const IV_LENGTH = 16;
 
+/**
+ * Derives a 32-byte key from the ENCRYPTION_KEY environment variable using scrypt.
+ *
+ * @returns A 32-byte Buffer key.
+ * @throws {Error} If ENCRYPTION_KEY is not defined.
+ */
 function getKey() {
   const secret = process.env.ENCRYPTION_KEY;
   if (!secret) {
@@ -12,6 +20,12 @@ function getKey() {
   return crypto.scryptSync(secret, 'salt', 32);
 }
 
+/**
+ * Encrypts a plain text string using AES-256-GCM.
+ *
+ * @param text - The plain text to encrypt.
+ * @returns The encrypted string in the format "iv:tag:encrypted".
+ */
 export function encrypt(text: string): string {
   const iv = crypto.randomBytes(IV_LENGTH);
   const key = getKey();
@@ -24,6 +38,13 @@ export function encrypt(text: string): string {
   return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
 }
 
+/**
+ * Decrypts a string encrypted with the `encrypt` function.
+ *
+ * @param text - The encrypted string in the format "iv:tag:encrypted".
+ * @returns The decrypted plain text string.
+ * @throws {Error} If the encrypted string format is invalid.
+ */
 export function decrypt(text: string): string {
   const parts = text.split(':');
   if (parts.length !== 3) {

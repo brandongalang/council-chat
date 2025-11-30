@@ -1,6 +1,13 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+/**
+ * Updates the Supabase session in the middleware.
+ * handling cookie management to ensure the session remains active.
+ *
+ * @param request - The incoming NextRequest.
+ * @returns A NextResponse with updated cookies.
+ */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,

@@ -43,7 +43,12 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Save, Trash2, Edit2, Menu } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useSearchParams, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
+/**
+ * Interface representing a chat message.
+ */
 interface Message {
     id: string;
     role: 'system' | 'user' | 'assistant' | 'data';
@@ -51,9 +56,13 @@ interface Message {
     annotations?: any;
 }
 
-import { useSearchParams, useRouter } from 'next/navigation';
-import { toast } from 'sonner';
-
+/**
+ * Main Chat Interface Component.
+ * Manages the state of the chat, council configuration, and interaction flow.
+ * Handles switching between 'solo' and 'council' modes.
+ *
+ * @returns The rendered Chat Interface.
+ */
 export default function ChatInterface() {
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -281,7 +290,6 @@ Format: Use clear headings or bullet points for the analysis if helpful, but kee
         setTemporaryCouncilResponses([]); // Clear temp display once it's integrated into the message
     };
 
-    // ... inside return
     return (
         <div className="flex h-[calc(100vh-4rem)]">
             <ChatSidebar
