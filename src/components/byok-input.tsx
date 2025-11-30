@@ -14,9 +14,7 @@ export function ByokInput() {
   useEffect(() => {
     const stored = localStorage.getItem('openai_api_key')
     if (stored) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setKey(stored)
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSaved(true)
     }
   }, [])
