@@ -39,9 +39,19 @@ export const POPULAR_MODELS: Model[] = [
   { id: 'mistralai/mistral-large', name: 'Mistral Large', provider: 'Mistral' },
 ]
 
+import { Edit2 } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { PersonaEditorDialog } from '@/components/chat/persona-editor-dialog';
+
+export interface CouncilMember {
+  modelId: string
+  persona?: string
+}
+
 interface ModelSelectorProps {
-  value?: string | string[]
-  onValueChange: (value: string | string[]) => void
+  value?: string | string[] | CouncilMember[]
+  onValueChange: (value: any) => void
   mode?: 'single' | 'multiple'
   className?: string
 }
@@ -55,18 +65,73 @@ export function ModelSelector({
   const [open, setOpen] = React.useState(false)
   const [customModel, setCustomModel] = React.useState("")
 
-  const selectedValues = Array.isArray(value) ? value : (value ? [value] : [])
+  // Persona Editing State
+  const [editingMember, setEditingMember] = React.useState<CouncilMember | null>(null)
+  const [personaInput, setPersonaInput] = React.useState("")
+
+  // Normalize value to array of IDs for selection logic
+  const selectedIds = React.useMemo(() => {
+    if (!value) return []
+    if (Array.isArray(value)) {
+      return (value as any[]).map(v => typeof v === 'string' ? v : v.modelId)
+    }
+    return [typeof value === 'string' ? value : (value as any).modelId]
+  }, [value])
+
+  // Helper to get full member object if it exists
+  const getMember = (id: string): CouncilMember | undefined => {
+    if (Array.isArray(value)) {
+      return (value as any[]).find(v => (typeof v === 'string' ? v : v.modelId) === id)
+        ? (typeof (value as any[]).find(v => (typeof v === 'string' ? v : v.modelId) === id) === 'string'
+          ? { modelId: id }
+          : (value as any[]).find(v => v.modelId === id))
+        : undefined
+    }
+    return undefined
+  }
 
   const handleSelect = (currentValue: string) => {
     if (mode === 'single') {
-      onValueChange(currentValue === value ? "" : currentValue)
+      onValueChange(currentValue === (value as string) ? "" : currentValue)
       setOpen(false)
     } else {
-      const newValues = selectedValues.includes(currentValue)
-        ? selectedValues.filter((v) => v !== currentValue)
-        : [...selectedValues, currentValue]
-      onValueChange(newValues)
+      // Multiple Mode Logic
+      const currentMembers = (value as any[]) || []
+      const exists = currentMembers.some(m => (typeof m === 'string' ? m : m.modelId) === currentValue)
+
+      let newMembers
+      if (exists) {
+        newMembers = currentMembers.filter(m => (typeof m === 'string' ? m : m.modelId) !== currentValue)
+      } else {
+        newMembers = [...currentMembers, { modelId: currentValue }]
+      }
+      onValueChange(newMembers)
     }
+  }
+
+  const handleEditPersona = (memberId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const member = getMember(memberId)
+    if (member) {
+      setEditingMember(member)
+      setPersonaInput(member.persona || "")
+    }
+  }
+
+  const savePersona = () => {
+    if (!editingMember) return
+
+    const currentMembers = (value as any[]) || []
+    const newMembers = currentMembers.map(m => {
+      const id = typeof m === 'string' ? m : m.modelId
+      if (id === editingMember.modelId) {
+        return { modelId: id, persona: personaInput }
+      }
+      return m
+    })
+
+    onValueChange(newMembers)
+    setEditingMember(null)
   }
 
   const getModelName = (id: string) => {
@@ -85,8 +150,8 @@ export function ModelSelector({
             className="w-full justify-between font-mono text-xs h-10 rounded-none"
           >
             {mode === 'single'
-              ? (selectedValues.length > 0 ? getModelName(selectedValues[0]) : "Select model...")
-              : (selectedValues.length > 0 ? `${selectedValues.length} models selected` : "Select models...")
+              ? (selectedIds.length > 0 ? getModelName(selectedIds[0]) : "Select model...")
+              : (selectedIds.length > 0 ? `${selectedIds.length} models selected` : "Select models...")
             }
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
@@ -126,107 +191,61 @@ export function ModelSelector({
                   </div>
                 </div>
               </CommandEmpty>
-              <CommandGroup heading="Anthropic">
-                {POPULAR_MODELS.filter(m => m.provider === 'Anthropic').map((model) => (
-                  <CommandItem
-                    key={model.id}
-                    value={model.id} // Search by ID
-                    keywords={[model.name, model.provider]}
-                    onSelect={handleSelect}
-                    className="font-mono text-xs"
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        selectedValues.includes(model.id) ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    {model.name}
-                    <span className="ml-auto text-muted-foreground opacity-50">{model.id}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-              <CommandSeparator />
-              <CommandGroup heading="OpenAI">
-                {POPULAR_MODELS.filter(m => m.provider === 'OpenAI').map((model) => (
-                  <CommandItem
-                    key={model.id}
-                    value={model.id}
-                    keywords={[model.name, model.provider]}
-                    onSelect={handleSelect}
-                    className="font-mono text-xs"
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        selectedValues.includes(model.id) ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    {model.name}
-                    <span className="ml-auto text-muted-foreground opacity-50">{model.id}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-              <CommandSeparator />
-              <CommandGroup heading="Google">
-                {POPULAR_MODELS.filter(m => m.provider === 'Google').map((model) => (
-                  <CommandItem
-                    key={model.id}
-                    value={model.id}
-                    keywords={[model.name, model.provider]}
-                    onSelect={handleSelect}
-                    className="font-mono text-xs"
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        selectedValues.includes(model.id) ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    {model.name}
-                    <span className="ml-auto text-muted-foreground opacity-50">{model.id}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-              <CommandSeparator />
-              <CommandGroup heading="Open Source / Others">
-                {POPULAR_MODELS.filter(m => !['Anthropic', 'OpenAI', 'Google'].includes(m.provider)).map((model) => (
-                  <CommandItem
-                    key={model.id}
-                    value={model.id}
-                    keywords={[model.name, model.provider]}
-                    onSelect={handleSelect}
-                    className="font-mono text-xs"
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        selectedValues.includes(model.id) ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    {model.name}
-                    <span className="ml-auto text-muted-foreground opacity-50">{model.id}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+              {['Anthropic', 'OpenAI', 'Google', 'Other'].map(provider => (
+                <CommandGroup key={provider} heading={provider === 'Other' ? 'Open Source / Others' : provider}>
+                  {POPULAR_MODELS.filter(m => provider === 'Other' ? !['Anthropic', 'OpenAI', 'Google'].includes(m.provider) : m.provider === provider).map((model) => (
+                    <CommandItem
+                      key={model.id}
+                      value={model.id}
+                      keywords={[model.name, model.provider]}
+                      onSelect={handleSelect}
+                      className="font-mono text-xs"
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          selectedIds.includes(model.id) ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      {model.name}
+                      <span className="ml-auto text-muted-foreground opacity-50">{model.id}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              ))}
             </CommandList>
           </Command>
         </PopoverContent>
       </Popover>
 
       {/* Selected Tags Display for Multiple Mode */}
-      {mode === 'multiple' && selectedValues.length > 0 && (
+      {mode === 'multiple' && selectedIds.length > 0 && (
         <div className="flex flex-wrap gap-2 pt-2">
-          {selectedValues.map(val => {
-            const model = POPULAR_MODELS.find(m => m.id === val);
+          {selectedIds.map(id => {
+            const model = POPULAR_MODELS.find(m => m.id === id);
+            const member = getMember(id);
+            const hasPersona = member?.persona && member.persona.trim().length > 0;
+
             return (
-              <Badge key={val} variant="secondary" className="rounded-none font-mono font-normal text-xs pr-1">
-                {model ? model.name : val}
+              <Badge key={id} variant="secondary" className={cn("rounded-none font-mono font-normal text-xs pr-1 pl-2 py-1 flex items-center gap-1", hasPersona && "border-primary/50 bg-primary/5")}>
+                <span>{model ? model.name : id}</span>
+                {hasPersona && <span className="text-[9px] text-primary ml-1 font-bold" title={member.persona}>(P)</span>}
+
                 <Button
                   variant="ghost"
-                  size="sm"
-                  className="h-auto p-0 ml-2 hover:bg-transparent text-muted-foreground hover:text-foreground"
-                  onClick={() => handleSelect(val)}
+                  size="icon"
+                  className="h-4 w-4 ml-1 hover:bg-transparent text-muted-foreground hover:text-foreground"
+                  onClick={(e) => handleEditPersona(id, e)}
+                  title="Edit Persona"
+                >
+                  <Edit2 className="h-3 w-3" />
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-4 w-4 ml-1 hover:bg-transparent text-muted-foreground hover:text-foreground"
+                  onClick={() => handleSelect(id)}
                 >
                   <X className="h-3 w-3" />
                 </Button>
@@ -235,6 +254,16 @@ export function ModelSelector({
           })}
         </div>
       )}
+
+      {/* Persona Editor Dialog */}
+      <PersonaEditorDialog
+        isOpen={!!editingMember}
+        onOpenChange={(open) => !open && setEditingMember(null)}
+        modelName={editingMember ? getModelName(editingMember.modelId) : ''}
+        persona={personaInput}
+        setPersona={setPersonaInput}
+        onSave={savePersona}
+      />
     </div>
   )
 }

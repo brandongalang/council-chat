@@ -24,20 +24,22 @@ export function CouncilResponseItem({ response }: CouncilResponseItemProps) {
 
     return (
         <Card className="mb-4 border-l-4" style={{ borderLeftColor: getStatusColor(response.status) }}>
-            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between space-y-0">
+            <CardHeader className="py-3 px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 space-y-0">
                 <div className="flex items-center gap-2">
                     <CardTitle className="text-sm font-medium">{response.modelName}</CardTitle>
-                    <Badge variant="outline" className="text-[10px] font-normal">
+                    <Badge variant="outline" className="text-[10px] font-normal truncate max-w-[150px] sm:max-w-none">
                         {response.modelId}
                     </Badge>
                 </div>
-                <div className="flex items-center gap-2">
-                    {response.status === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
-                    {response.status === 'streaming' && <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>}
+                <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
+                    <div className="flex items-center gap-2">
+                        {response.status === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
+                        {response.status === 'streaming' && <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>}
 
-                    <div className="flex flex-col items-end text-[10px] text-muted-foreground mr-2">
-                        <span>{outputTokens} tok</span>
-                        <span>${cost.toFixed(5)}</span>
+                        <div className="flex flex-col items-end text-[10px] text-muted-foreground mr-2">
+                            <span>{outputTokens} tok</span>
+                            <span>${cost.toFixed(5)}</span>
+                        </div>
                     </div>
 
                     <Collapsible open={isOpen} onOpenChange={setIsOpen}>

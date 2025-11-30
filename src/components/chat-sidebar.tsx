@@ -16,7 +16,7 @@ interface ChatSidebarProps {
     onNewChat: () => void;
 }
 
-export function ChatSidebar({ currentChatId, onSelectChat, onNewChat }: ChatSidebarProps) {
+export function ChatSidebar({ currentChatId, onSelectChat, onNewChat, className }: ChatSidebarProps & { className?: string }) {
     const [chats, setChats] = useState<Chat[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -39,7 +39,7 @@ export function ChatSidebar({ currentChatId, onSelectChat, onNewChat }: ChatSide
     };
 
     return (
-        <div className="w-64 border-r bg-muted/10 flex flex-col h-full hidden md:flex">
+        <div className={cn("w-64 border-r bg-muted/10 flex flex-col h-full", className)}>
             <div className="p-4 border-b">
                 <Button onClick={onNewChat} className="w-full justify-start gap-2" variant="outline">
                     <Plus className="h-4 w-4" />

@@ -39,7 +39,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { name, description, judgeModel, members } = body;
+    const { name, description, judgeModel, members, judgePrompt } = body;
 
     if (!name || !members || !Array.isArray(members) || members.length === 0) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
@@ -52,14 +52,24 @@ export async function POST(req: Request) {
         name,
         description,
         judge_model: judgeModel,
+        judge_settings: JSON.stringify({ systemPrompt: judgePrompt }),
       }).returning();
 
       if (!newCouncil) throw new Error('Failed to create council');
 
-      const modelValues = members.map((modelId: string) => ({
-        council_id: newCouncil.id,
-        model_id: modelId,
-      }));
+      const modelValues = members.map((member: string | { modelId: string; persona?: string }) => {
+        if (typeof member === 'string') {
+          return {
+            council_id: newCouncil.id,
+            model_id: member,
+          };
+        }
+        return {
+          council_id: newCouncil.id,
+          model_id: member.modelId,
+          system_prompt_override: member.persona,
+        };
+      });
 
       await tx.insert(councilModels).values(modelValues);
 

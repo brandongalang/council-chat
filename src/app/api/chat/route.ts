@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { messages, model, councilContext, councilData, chatId: requestedChatId, judgePrompt } = await req.json();
+    const { messages, model, councilContext, councilData, chatId: requestedChatId, judgePrompt, persona } = await req.json();
 
     // 1. Get API Key
     const keyRecord = await db.query.userApiKeys.findFirst({
@@ -86,6 +86,8 @@ Tone: Diplomatic but decisive.Acknowledge nuance, but do not equivocate.
 
 --- COUNCIL DELIBERATIONS-- -
   ${councilContext} `;
+    } else if (persona) {
+      systemPrompt = persona;
     }
 
     const result = await streamText({

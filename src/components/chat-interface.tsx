@@ -6,7 +6,7 @@ import { CouncilAccordion } from '@/components/council/council-accordion';
 import { ChatList } from '@/components/chat/chat-list';
 import { ChatInput } from '@/components/chat/chat-input';
 import { useState } from 'react';
-import { ModelSelector } from '@/components/model-selector';
+import { ModelSelector, CouncilMember } from '@/components/model-selector';
 import { Button } from '@/components/ui/button';
 import { Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import {
@@ -19,6 +19,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ChatSidebar } from '@/components/chat-sidebar';
 import { useCouncil } from '@/hooks/use-council';
 import { CouncilResponse } from '@/types/council';
+import { CouncilConfigPanel } from '@/components/chat/council-config-panel';
 import type React from 'react';
 import { useEffect } from 'react';
 import {
@@ -40,7 +41,8 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Save, Trash2, Edit2 } from 'lucide-react';
+import { Save, Trash2, Edit2, Menu } from 'lucide-react';
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 interface Message {
     id: string;
@@ -57,11 +59,15 @@ export default function ChatInterface() {
     const router = useRouter();
     const [mode, setMode] = useState<'solo' | 'council'>('solo');
     const [soloModel, setSoloModel] = useState<string>('openai/gpt-4o');
-    const [councilMembers, setCouncilMembers] = useState<string[]>(['openai/gpt-4-turbo', 'anthropic/claude-3-opus']);
+    const [councilMembers, setCouncilMembers] = useState<CouncilMember[]>([
+        { modelId: 'openai/gpt-4-turbo' },
+        { modelId: 'anthropic/claude-3-opus' }
+    ]);
     const [judgeModel, setJudgeModel] = useState<string>('openai/gpt-4o');
     const [isConfigOpen, setIsConfigOpen] = useState(false);
     const [temporaryCouncilResponses, setTemporaryCouncilResponses] = useState<CouncilResponse[]>([]);
     const [currentChatId, setCurrentChatId] = useState<string | null>(searchParams.get('id'));
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     // Presets State
     const [presets, setPresets] = useState<any[]>([]);
@@ -111,7 +117,8 @@ Format: Use clear headings or bullet points for the analysis if helpful, but kee
                     name: presetName,
                     description: '',
                     judgeModel: judgeModel,
-                    members: councilMembers
+                    members: councilMembers, // Now sends [{modelId, persona?}]
+                    judgePrompt: judgePrompt
                 })
             });
 
@@ -132,8 +139,21 @@ Format: Use clear headings or bullet points for the analysis if helpful, but kee
         const preset = presets.find(p => p.id === presetId);
         if (preset) {
             setJudgeModel(preset.judge_model || 'openai/gpt-4o');
-            // Extract model IDs from the relation
-            const members = preset.models.map((m: any) => m.model_id);
+
+            // Load Judge Prompt
+            try {
+                const settings = preset.judge_settings ? JSON.parse(preset.judge_settings) : {};
+                setJudgePrompt(settings.systemPrompt || '');
+            } catch (e) {
+                console.error('Failed to parse judge settings', e);
+                setJudgePrompt('');
+            }
+
+            // Extract model IDs and personas
+            const members = preset.models.map((m: any) => ({
+                modelId: m.model_id,
+                persona: m.system_prompt_override
+            }));
             setCouncilMembers(members);
             toast.success(`Loaded preset: ${preset.name}`);
         }
@@ -235,191 +255,72 @@ Format: Use clear headings or bullet points for the analysis if helpful, but kee
         const history = messages.map((m: Message) => ({ role: m.role, content: m.content }));
         const userMsgObject = { role: 'user', content: userMessage } as Message;
 
+        const updatedMessages = [...history, userMsgObject];
+
         // Start Council Deliberation
-        const councilResults = await generateCouncilResponses(
-            [...history, userMsgObject],
-            councilMembers,
+        const councilResponses = await generateCouncilResponses(
+            updatedMessages,
+            councilMembers, // Now passing CouncilMember[]
             (responses) => setTemporaryCouncilResponses(responses) // Real-time updates if we want to show them outside the chat list
         );
 
-        // Prepare Context for Judge
-        const contextString = councilResults.map(r => `[Agent: ${r.modelName}]\n${r.content}`).join('\n\n');
+        // 3. Prepare Context for Judge
+        const contextString = councilResponses.map(r => `[Agent: ${r.modelName}]\n${r.content}`).join('\n\n');
 
         // Trigger Judge (The actual Chat Item)
         await append({
             role: 'user',
-            content: userMessage,
-        }, {
-            body: {
-                model: judgeModel,
+            content: `User Query: ${userMessage}\n\n--- COUNCIL DELIBERATIONS ---\n${contextString}`,
+            data: {
                 councilContext: contextString,
-                councilData: councilResults, // This will be returned as annotations
-                chatId: currentChatId,
-                judgePrompt: judgePrompt
+                councilData: councilResponses,
+                judgePrompt: judgePrompt // Pass the custom prompt
             }
         });
 
         setTemporaryCouncilResponses([]); // Clear temp display once it's integrated into the message
     };
 
+    // ... inside return
     return (
         <div className="flex h-[calc(100vh-4rem)]">
             <ChatSidebar
                 currentChatId={currentChatId}
                 onSelectChat={loadChat}
                 onNewChat={handleNewChat}
+                className="hidden md:flex"
             />
 
             <div className="flex flex-col flex-1 h-full relative">
-                {/* Council Configuration Header */}
-                <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10">
-                    <Collapsible
-                        open={isConfigOpen}
-                        onOpenChange={setIsConfigOpen}
-                        className="w-full"
-                    >
-                        <div className="flex items-center justify-between px-4 py-2">
-                            <div className="flex items-center gap-4">
-                                <h2 className="text-sm font-serif font-medium">Session Settings</h2>
-                                <Tabs value={mode} onValueChange={(v: string) => setMode(v as 'solo' | 'council')} className="w-[180px] h-8">
-                                    <TabsList className="grid w-full grid-cols-2 h-8">
-                                        <TabsTrigger value="solo" className="text-xs font-mono h-6">Solo</TabsTrigger>
-                                        <TabsTrigger value="council" className="text-xs font-mono h-6">Council</TabsTrigger>
-                                    </TabsList>
-                                </Tabs>
-                            </div>
-
-                            <CollapsibleTrigger asChild>
-                                <Button variant="ghost" size="sm" className="w-9 p-0">
-                                    <Settings2 className="h-4 w-4" />
-                                    <span className="sr-only">Toggle Config</span>
-                                </Button>
-                            </CollapsibleTrigger>
-                        </div>
-
-                        <CollapsibleContent className="px-4 pb-4 space-y-4">
-                            {mode === 'solo' ? (
-                                <div className="space-y-2 pt-2">
-                                    <label className="text-xs font-mono text-muted-foreground uppercase">Model</label>
-                                    <ModelSelector
-                                        mode="single"
-                                        value={soloModel}
-                                        onValueChange={(val) => setSoloModel(val as string)}
-                                    />
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                                    {/* Preset Controls */}
-                                    <div className="md:col-span-2 flex items-center gap-2 mb-2 p-2 bg-muted/30 rounded-md border border-dashed">
-                                        <div className="flex-1">
-                                            <Select onValueChange={handleLoadPreset}>
-                                                <SelectTrigger className="h-8 text-xs font-mono">
-                                                    <SelectValue placeholder="Load a Council Preset..." />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {presets.map((preset) => (
-                                                        <SelectItem key={preset.id} value={preset.id} className="text-xs font-mono">
-                                                            <div className="flex items-center justify-between w-full gap-4">
-                                                                <span>{preset.name}</span>
-                                                                <span className="text-muted-foreground text-[10px]">{preset.models?.length} members</span>
-                                                            </div>
-                                                        </SelectItem>
-                                                    ))}
-                                                    {presets.length === 0 && <div className="p-2 text-xs text-muted-foreground">No presets saved</div>}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
-                                            <DialogTrigger asChild>
-                                                <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-                                                    <Save className="h-3 w-3" />
-                                                    Save
-                                                </Button>
-                                            </DialogTrigger>
-                                            <DialogContent className="sm:max-w-[425px]">
-                                                <DialogHeader>
-                                                    <DialogTitle>Save Council Preset</DialogTitle>
-                                                    <DialogDescription>
-                                                        Save the current configuration (Members + Judge) as a reusable preset.
-                                                    </DialogDescription>
-                                                </DialogHeader>
-                                                <div className="grid gap-4 py-4">
-                                                    <div className="grid grid-cols-4 items-center gap-4">
-                                                        <Label htmlFor="name" className="text-right">
-                                                            Name
-                                                        </Label>
-                                                        <Input
-                                                            id="name"
-                                                            value={presetName}
-                                                            onChange={(e) => setPresetName(e.target.value)}
-                                                            className="col-span-3"
-                                                            placeholder="e.g. Coding Team"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <DialogFooter>
-                                                    <Button onClick={handleSavePreset}>Save Preset</Button>
-                                                </DialogFooter>
-                                            </DialogContent>
-                                        </Dialog>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-mono text-muted-foreground uppercase">Council Members (Debaters)</label>
-                                        <ModelSelector
-                                            mode="multiple"
-                                            value={councilMembers}
-                                            onValueChange={(val) => setCouncilMembers(val as string[])}
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <label className="text-xs font-mono text-muted-foreground uppercase">Judge (Synthesizer)</label>
-                                            <Dialog open={isJudgeConfigOpen} onOpenChange={setIsJudgeConfigOpen}>
-                                                <DialogTrigger asChild>
-                                                    <Button variant="ghost" size="sm" className="h-5 px-2 text-[10px] text-muted-foreground hover:text-foreground">
-                                                        <Edit2 className="h-3 w-3 mr-1" />
-                                                        Customize Persona
-                                                    </Button>
-                                                </DialogTrigger>
-                                                <DialogContent className="sm:max-w-[600px]">
-                                                    <DialogHeader>
-                                                        <DialogTitle>Judge Persona Configuration</DialogTitle>
-                                                        <DialogDescription>
-                                                            Customize how the Judge synthesizes the Council&apos;s debate.
-                                                        </DialogDescription>
-                                                    </DialogHeader>
-                                                    <div className="grid gap-4 py-4">
-                                                        <div className="space-y-2">
-                                                            <Label htmlFor="prompt">System Prompt</Label>
-                                                            <Textarea
-                                                                id="prompt"
-                                                                value={judgePrompt}
-                                                                onChange={(e) => setJudgePrompt(e.target.value)}
-                                                                className="h-[300px] font-mono text-xs"
-                                                                placeholder="Enter system prompt..."
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <DialogFooter>
-                                                        <Button variant="outline" onClick={() => setJudgePrompt(DEFAULT_JUDGE_PROMPT)}>Reset to Default</Button>
-                                                        <Button onClick={() => setIsJudgeConfigOpen(false)}>Done</Button>
-                                                    </DialogFooter>
-                                                </DialogContent>
-                                            </Dialog>
-                                        </div>
-                                        <ModelSelector
-                                            mode="single"
-                                            value={judgeModel}
-                                            onValueChange={(val) => setJudgeModel(val as string)}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </CollapsibleContent>
-                    </Collapsible>
-                </div>
+                <CouncilConfigPanel
+                    mode={mode}
+                    setMode={setMode}
+                    soloModel={soloModel}
+                    setSoloModel={setSoloModel}
+                    councilMembers={councilMembers}
+                    setCouncilMembers={setCouncilMembers}
+                    judgeModel={judgeModel}
+                    setJudgeModel={setJudgeModel}
+                    judgePrompt={judgePrompt}
+                    setJudgePrompt={setJudgePrompt}
+                    defaultJudgePrompt={DEFAULT_JUDGE_PROMPT}
+                    presets={presets}
+                    onLoadPreset={handleLoadPreset}
+                    onSavePreset={handleSavePreset}
+                    presetName={presetName}
+                    setPresetName={setPresetName}
+                    isConfigOpen={isConfigOpen}
+                    setIsConfigOpen={setIsConfigOpen}
+                    isSidebarOpen={isSidebarOpen}
+                    setIsSidebarOpen={setIsSidebarOpen}
+                    currentChatId={currentChatId}
+                    onSelectChat={loadChat}
+                    onNewChat={handleNewChat}
+                    isJudgeConfigOpen={isJudgeConfigOpen}
+                    setIsJudgeConfigOpen={setIsJudgeConfigOpen}
+                    isSaveDialogOpen={isSaveDialogOpen}
+                    setIsSaveDialogOpen={setIsSaveDialogOpen}
+                />
 
                 <div className="flex-1 overflow-hidden flex flex-col relative">
                     <ChatList messages={messages} isLoading={isLoading} />

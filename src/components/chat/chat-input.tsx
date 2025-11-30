@@ -33,7 +33,7 @@ export function ChatInput({ input, handleInputChange, handleSubmit, isLoading, s
           onChange={handleInputChange}
           placeholder="Enter transmission..."
           spellCheck={false}
-          className="min-h-[60px] w-full resize-none bg-background px-4 py-[1.3rem] focus-within:outline-none sm:text-sm font-mono rounded-none border-border focus:border-primary transition-colors"
+          className="min-h-[60px] w-full resize-none bg-background px-4 py-[1.3rem] focus-within:outline-none text-base sm:text-sm font-mono rounded-none border-border focus:border-primary transition-colors"
         />
         <div className="absolute right-4 bottom-4">
           {isLoading ? (

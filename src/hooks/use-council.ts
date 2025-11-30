@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { UIMessage as Message } from '@ai-sdk/react';
 import { CouncilResponse } from '@/types/council';
+import { CouncilMember } from '@/components/model-selector';
 
 export function useCouncil() {
     const [councilResponses, setCouncilResponses] = useState<CouncilResponse[]>([]);
@@ -8,13 +9,13 @@ export function useCouncil() {
 
     const generateCouncilResponses = async (
         messages: Message[],
-        members: string[],
+        members: CouncilMember[],
         onUpdate: (responses: CouncilResponse[]) => void
     ) => {
         setIsCouncilActive(true);
         const newResponses: CouncilResponse[] = members.map(m => ({
-            modelId: m,
-            modelName: m.split('/').pop() || m, // Simple name extraction
+            modelId: m.modelId,
+            modelName: m.modelId.split('/').pop() || m.modelId, // Simple name extraction
             status: 'loading',
             content: ''
         }));
@@ -23,14 +24,15 @@ export function useCouncil() {
 
         try {
             // Parallel Fetch
-            await Promise.all(members.map(async (modelId, index) => {
+            await Promise.all(members.map(async (member, index) => {
                 try {
                     const response = await fetch('/api/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             messages,
-                            model: modelId
+                            model: member.modelId,
+                            persona: member.persona
                         })
                     });
 
@@ -58,7 +60,7 @@ export function useCouncil() {
                     onUpdate([...newResponses]);
 
                 } catch (err) {
-                    console.error(`Error with model ${modelId}:`, err);
+                    console.error(`Error with model ${member.modelId}:`, err);
                     newResponses[index].status = 'error';
                     newResponses[index].content = 'Failed to generate response.';
                     setCouncilResponses([...newResponses]);
