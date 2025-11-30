@@ -19,13 +19,26 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
+import { Edit2 } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { PersonaEditorDialog } from '@/components/chat/persona-editor-dialog';
 
+/**
+ * Definition of a Model interface.
+ */
 export interface Model {
+  /** Unique identifier for the model. */
   id: string
+  /** Display name of the model. */
   name: string
+  /** Provider of the model (e.g. OpenAI). */
   provider: string
 }
 
+/**
+ * List of popular models available for selection.
+ */
 export const POPULAR_MODELS: Model[] = [
   { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
   { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI' },
@@ -39,23 +52,35 @@ export const POPULAR_MODELS: Model[] = [
   { id: 'mistralai/mistral-large', name: 'Mistral Large', provider: 'Mistral' },
 ]
 
-import { Edit2 } from "lucide-react"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { PersonaEditorDialog } from '@/components/chat/persona-editor-dialog';
-
+/**
+ * Represents a member of a Council, including model ID and optional persona.
+ */
 export interface CouncilMember {
   modelId: string
   persona?: string
 }
 
+/**
+ * Props for the ModelSelector component.
+ */
 interface ModelSelectorProps {
+  /** The currently selected value(s). Can be a string, array of strings, or array of CouncilMembers. */
   value?: string | string[] | CouncilMember[]
+  /** Callback triggered when selection changes. */
   onValueChange: (value: any) => void
+  /** Selection mode: 'single' or 'multiple'. */
   mode?: 'single' | 'multiple'
+  /** Optional class name for styling. */
   className?: string
 }
 
+/**
+ * Component for selecting AI models from a list or entering a custom one.
+ * Supports single and multiple selection modes, and persona editing for council members.
+ *
+ * @param props - The properties for the Model Selector.
+ * @returns The rendered Model Selector component.
+ */
 export function ModelSelector({
   value,
   onValueChange,

@@ -5,6 +5,12 @@ import * as AvatarPrimitive from "@radix-ui/react-avatar"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * Root component for the Avatar.
+ *
+ * @param props - Props for the Avatar Root.
+ * @returns The rendered Avatar root.
+ */
 function Avatar({
   className,
   ...props
@@ -21,6 +27,12 @@ function Avatar({
   )
 }
 
+/**
+ * Image component for the Avatar.
+ *
+ * @param props - Props for the Avatar Image.
+ * @returns The rendered Avatar Image.
+ */
 function AvatarImage({
   className,
   ...props
@@ -34,6 +46,12 @@ function AvatarImage({
   )
 }
 
+/**
+ * Fallback component for the Avatar (displayed when image is missing).
+ *
+ * @param props - Props for the Avatar Fallback.
+ * @returns The rendered Avatar Fallback.
+ */
 function AvatarFallback({
   className,
   ...props

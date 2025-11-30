@@ -36,16 +36,32 @@ const buttonVariants = cva(
   }
 )
 
+/**
+ * Props for the Button component.
+ */
+export interface ButtonProps
+  extends React.ComponentProps<"button">,
+    VariantProps<typeof buttonVariants> {
+  /**
+   * If true, renders the button as a child component (using Radix Slot).
+   * Useful for composition.
+   */
+  asChild?: boolean
+}
+
+/**
+ * A flexible Button component with multiple variants and sizes.
+ *
+ * @param props - The properties for the button.
+ * @returns The rendered button element.
+ */
 function Button({
   className,
   variant,
   size,
   asChild = false,
   ...props
-}: React.ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
-  }) {
+}: ButtonProps) {
   const Comp = asChild ? Slot : "button"
 
   return (

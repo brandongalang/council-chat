@@ -118,3 +118,8 @@
 [2025-11-29 23:35:34] Expected: beads.db
 [2025-11-29 23:35:34]
 [2025-11-29 23:35:34] Run 'bd init' to migrate to canonical name
+[2025-11-30 07:18:56] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-30 07:18:56] Error: Non-canonical database name: cc.db
+[2025-11-30 07:18:56] Expected: beads.db
+[2025-11-30 07:18:56]
+[2025-11-30 07:18:56] Run 'bd init' to migrate to canonical name

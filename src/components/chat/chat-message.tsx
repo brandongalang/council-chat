@@ -9,10 +9,21 @@ import { User, Bot } from 'lucide-react';
 import { CouncilAccordion } from './council-accordion';
 import { CouncilResponse } from '@/types/council';
 
+/**
+ * Props for the ChatMessage component.
+ */
 interface ChatMessageProps {
+  /** The message object to display. */
   message: Message;
 }
 
+/**
+ * Displays a single chat message.
+ * Handles user and assistant messages, markdown rendering, and displaying council deliberations if present.
+ *
+ * @param props - The properties for the ChatMessage.
+ * @returns The rendered ChatMessage.
+ */
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
 

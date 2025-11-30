@@ -1,10 +1,21 @@
 import { type NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
+/**
+ * Next.js Middleware.
+ * Updates the Supabase session for every request to ensure authentication persistence.
+ *
+ * @param request - The incoming NextRequest.
+ * @returns The response with updated session cookies.
+ */
 export async function middleware(request: NextRequest) {
   return await updateSession(request)
 }
 
+/**
+ * Configuration for the middleware matcher.
+ * Excludes static files and images.
+ */
 export const config = {
   matcher: [
     /*

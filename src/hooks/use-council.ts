@@ -3,10 +3,23 @@ import { UIMessage as Message } from '@ai-sdk/react';
 import { CouncilResponse } from '@/types/council';
 import { CouncilMember } from '@/components/model-selector';
 
+/**
+ * Custom hook for managing the state and logic of Council-based chat generation.
+ * Handles parallel fetching of responses from multiple models.
+ */
 export function useCouncil() {
     const [councilResponses, setCouncilResponses] = useState<CouncilResponse[]>([]);
     const [isCouncilActive, setIsCouncilActive] = useState(false);
 
+    /**
+     * Generates responses from all council members in parallel.
+     * Updates state progressively as streams arrive.
+     *
+     * @param messages - The conversation history.
+     * @param members - The list of council members (models) to query.
+     * @param onUpdate - Callback function triggered whenever responses are updated.
+     * @returns A promise that resolves to the final array of CouncilResponses.
+     */
     const generateCouncilResponses = async (
         messages: Message[],
         members: CouncilMember[],

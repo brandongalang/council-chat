@@ -5,14 +5,29 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Send, Square } from 'lucide-react';
 
+/**
+ * Props for the ChatInput component.
+ */
 interface ChatInputProps {
+  /** The current input value. */
   input: string;
+  /** Handler for input changes. */
   handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  /** Handler for form submission. */
   handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  /** Whether the chat is currently generating a response. */
   isLoading: boolean;
+  /** Function to stop the current generation. */
   stop: () => void;
 }
 
+/**
+ * Component for user text input in the chat interface.
+ * Supports auto-resizing textarea and submit on Enter.
+ *
+ * @param props - The properties for the ChatInput.
+ * @returns The rendered ChatInput.
+ */
 export function ChatInput({ input, handleInputChange, handleSubmit, isLoading, stop }: ChatInputProps) {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
