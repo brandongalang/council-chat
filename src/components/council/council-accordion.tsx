@@ -2,6 +2,8 @@ import { Accordion } from '@/components/ui/accordion';
 import { CouncilResponse } from '@/types/council';
 import { CouncilResponseItem } from './council-response-item';
 import { useEffect, useState } from 'react';
+import { estimateTokens, calculateCost } from '@/lib/token-utils';
+import { MODEL_RATES, DEFAULT_RATE } from '@/lib/constants';
 
 interface CouncilAccordionProps {
     responses: CouncilResponse[];
@@ -26,12 +28,26 @@ export function CouncilAccordion({ responses }: CouncilAccordionProps) {
         return () => clearTimeout(t);
     }, [responses]);
 
+    // Calculate total cost
+    const totalCost = responses.reduce((acc, r) => {
+        const tokens = estimateTokens(r.content);
+        const cost = calculateCost(r.modelId, 0, tokens, { ...MODEL_RATES, default: DEFAULT_RATE });
+        return acc + cost;
+    }, 0);
+
     return (
         <div className="w-full max-w-3xl mx-auto space-y-2">
-            <div className="flex items-center gap-2 mb-2 px-1">
-                <span className="text-xs font-mono uppercase text-muted-foreground">Council Deliberation</span>
-                {responses.some(r => r.status === 'streaming' || r.status === 'loading') && (
-                    <span className="loading loading-spinner loading-xs text-muted-foreground"></span>
+            <div className="flex items-center justify-between mb-2 px-1">
+                <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono uppercase text-muted-foreground">Council Deliberation</span>
+                    {responses.some(r => r.status === 'streaming' || r.status === 'loading') && (
+                        <span className="loading loading-spinner loading-xs text-muted-foreground"></span>
+                    )}
+                </div>
+                {totalCost > 0 && (
+                    <span className="text-xs font-mono text-muted-foreground">
+                        Est. Cost: ${totalCost.toFixed(5)}
+                    </span>
                 )}
             </div>
 

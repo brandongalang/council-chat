@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, integer } from "drizzle-orm/pg-core";
 
 export const profiles = pgTable("profiles", {
   id: uuid("id").primaryKey().notNull(), // Should reference auth.users.id
@@ -50,5 +50,7 @@ export const messages = pgTable("messages", {
   role: text("role").notNull(), // 'user' | 'assistant'
   content: text("content").notNull(),
   annotations: text("annotations"), // JSON string for Council data
+  prompt_tokens: integer("prompt_tokens"),
+  completion_tokens: integer("completion_tokens"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
