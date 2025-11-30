@@ -1,21 +1,15 @@
-import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { councils, councilModels } from '@/db/schema';
 import { desc, eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const userId = 'local-user';
 
   try {
     // Fetch councils with their models
     const userCouncils = await db.query.councils.findMany({
-      where: eq(councils.user_id, user.id),
+      where: eq(councils.user_id, userId),
       orderBy: [desc(councils.updated_at)],
       with: {
         models: true
@@ -30,12 +24,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const userId = 'local-user';
 
   try {
     const body = await req.json();
@@ -48,7 +37,7 @@ export async function POST(req: Request) {
     // Transaction to insert council and its models
     const result = await db.transaction(async (tx) => {
       const [newCouncil] = await tx.insert(councils).values({
-        user_id: user.id,
+        user_id: userId,
         name,
         description,
         judge_model: judgeModel,

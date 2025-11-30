@@ -6,6 +6,8 @@ export interface CouncilResponse {
   status: CouncilMemberStatus;
   content: string;
   avatar?: string; // Optional custom avatar
+  promptTokens?: number;
+  completionTokens?: number;
 }
 
 export interface CouncilSession {

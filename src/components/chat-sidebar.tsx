@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageSquare, Plus } from 'lucide-react';
+import { MessageSquare, Plus, BarChart2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface Chat {
@@ -70,6 +70,14 @@ export function ChatSidebar({ currentChatId, onSelectChat, onNewChat, className 
                     )}
                 </div>
             </ScrollArea>
+            <div className="p-4 border-t">
+                <Button variant="ghost" className="w-full justify-start gap-2" asChild>
+                    <a href="/dashboard">
+                        <BarChart2 className="h-4 w-4" />
+                        Usage Dashboard
+                    </a>
+                </Button>
+            </div>
         </div>
     );
 }

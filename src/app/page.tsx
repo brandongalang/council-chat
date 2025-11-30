@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ByokInput } from '@/components/byok-input'
+
 import { Button } from '@/components/ui/button'
 
 export default function Home() {
@@ -10,11 +10,11 @@ export default function Home() {
         <p className="text-xl text-muted-foreground">Foundation Setup Complete</p>
       </div>
 
-      <ByokInput />
+
 
       <div className="flex gap-4">
         <Button asChild>
-            <Link href="/login">Login / Sign Up</Link>
+          <Link href="/chat">Enter Council</Link>
         </Button>
       </div>
     </main>

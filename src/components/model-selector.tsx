@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from "react"
-import { Check, ChevronsUpDown, X } from "lucide-react"
+import { Check, ChevronsUpDown, X, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,7 +11,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from "@/components/ui/command"
 import {
   Popover,
@@ -19,30 +18,19 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
+import { Edit2 } from "lucide-react"
+import { PersonaEditorDialog } from '@/components/chat/persona-editor-dialog';
 
 export interface Model {
   id: string
   name: string
   provider: string
+  pricing?: {
+    prompt: number
+    completion: number
+  }
+  context_length?: number
 }
-
-export const POPULAR_MODELS: Model[] = [
-  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
-  { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI' },
-  { id: 'openai/o1-preview', name: 'o1 Preview', provider: 'OpenAI' },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
-  { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus', provider: 'Anthropic' },
-  { id: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5', provider: 'Google' },
-  { id: 'google/gemini-flash-1.5', name: 'Gemini Flash 1.5', provider: 'Google' },
-  { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', provider: 'Meta' },
-  { id: 'meta-llama/llama-3.1-405b-instruct', name: 'Llama 3.1 405B', provider: 'Meta' },
-  { id: 'mistralai/mistral-large', name: 'Mistral Large', provider: 'Mistral' },
-]
-
-import { Edit2 } from "lucide-react"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { PersonaEditorDialog } from '@/components/chat/persona-editor-dialog';
 
 export interface CouncilMember {
   modelId: string
@@ -64,10 +52,46 @@ export function ModelSelector({
 }: ModelSelectorProps) {
   const [open, setOpen] = React.useState(false)
   const [customModel, setCustomModel] = React.useState("")
+  const [models, setModels] = React.useState<Model[]>([])
+  const [loading, setLoading] = React.useState(false)
 
   // Persona Editing State
   const [editingMember, setEditingMember] = React.useState<CouncilMember | null>(null)
   const [personaInput, setPersonaInput] = React.useState("")
+
+  // Fetch models on mount
+  React.useEffect(() => {
+    const fetchModels = async () => {
+      setLoading(true)
+      try {
+        const res = await fetch('/api/models')
+        if (res.ok) {
+          const data = await res.json()
+          // Map OpenRouter data to our Model interface
+          const mappedModels: Model[] = data.data.map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            provider: m.id.split('/')[0] || 'Other', // Simple provider extraction
+            pricing: {
+              prompt: parseFloat(m.pricing.prompt) * 1000000,
+              completion: parseFloat(m.pricing.completion) * 1000000,
+            },
+            context_length: m.context_length
+          })).sort((a: Model, b: Model) => a.name.localeCompare(b.name))
+
+          setModels(mappedModels)
+        } else {
+          console.error("Failed to fetch models")
+        }
+      } catch (error) {
+        console.error("Error fetching models:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchModels()
+  }, [])
 
   // Normalize value to array of IDs for selection logic
   const selectedIds = React.useMemo(() => {
@@ -81,11 +105,9 @@ export function ModelSelector({
   // Helper to get full member object if it exists
   const getMember = (id: string): CouncilMember | undefined => {
     if (Array.isArray(value)) {
-      return (value as any[]).find(v => (typeof v === 'string' ? v : v.modelId) === id)
-        ? (typeof (value as any[]).find(v => (typeof v === 'string' ? v : v.modelId) === id) === 'string'
-          ? { modelId: id }
-          : (value as any[]).find(v => v.modelId === id))
-        : undefined
+      const found = (value as any[]).find(v => (typeof v === 'string' ? v : v.modelId) === id)
+      if (!found) return undefined
+      return typeof found === 'string' ? { modelId: id } : found
     }
     return undefined
   }
@@ -135,9 +157,20 @@ export function ModelSelector({
   }
 
   const getModelName = (id: string) => {
-    const model = POPULAR_MODELS.find(m => m.id === id)
+    const model = models.find(m => m.id === id)
     return model ? model.name : id
   }
+
+  // Group models by provider
+  const groupedModels = React.useMemo(() => {
+    const groups: Record<string, Model[]> = {}
+    models.forEach(model => {
+      const provider = model.provider
+      if (!groups[provider]) groups[provider] = []
+      groups[provider].push(model)
+    })
+    return groups
+  }, [models])
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
@@ -147,12 +180,14 @@ export function ModelSelector({
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className="w-full justify-between font-mono text-xs h-10 rounded-none"
+            className="w-full justify-between font-mono text-xs h-10 rounded-none truncate"
           >
-            {mode === 'single'
-              ? (selectedIds.length > 0 ? getModelName(selectedIds[0]) : "Select model...")
-              : (selectedIds.length > 0 ? `${selectedIds.length} models selected` : "Select models...")
-            }
+            <span className="truncate">
+              {mode === 'single'
+                ? (selectedIds.length > 0 ? getModelName(selectedIds[0]) : "Select model...")
+                : (selectedIds.length > 0 ? `${selectedIds.length} models selected` : "Select models...")
+              }
+            </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
@@ -162,53 +197,64 @@ export function ModelSelector({
             <CommandList>
               <CommandEmpty>
                 <div className="p-2 text-xs font-mono">
-                  <p className="mb-2">No preset found.</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="flex h-8 w-full rounded-none border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                      placeholder="Enter custom ID (e.g. provider/model)"
-                      value={customModel}
-                      onChange={(e) => setCustomModel(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && customModel) {
-                          handleSelect(customModel)
-                          setCustomModel("")
-                        }
-                      }}
-                    />
-                    <Button
-                      size="sm"
-                      className="h-8 rounded-none"
-                      onClick={() => {
-                        if (customModel) {
-                          handleSelect(customModel)
-                          setCustomModel("")
-                        }
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </div>
+                  {loading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Loading models...
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mb-2">No model found.</p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="flex h-8 w-full rounded-none border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                          placeholder="Enter custom ID"
+                          value={customModel}
+                          onChange={(e) => setCustomModel(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && customModel) {
+                              handleSelect(customModel)
+                              setCustomModel("")
+                            }
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          className="h-8 rounded-none"
+                          onClick={() => {
+                            if (customModel) {
+                              handleSelect(customModel)
+                              setCustomModel("")
+                            }
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </CommandEmpty>
-              {['Anthropic', 'OpenAI', 'Google', 'Other'].map(provider => (
-                <CommandGroup key={provider} heading={provider === 'Other' ? 'Open Source / Others' : provider}>
-                  {POPULAR_MODELS.filter(m => provider === 'Other' ? !['Anthropic', 'OpenAI', 'Google'].includes(m.provider) : m.provider === provider).map((model) => (
+              {!loading && Object.entries(groupedModels).map(([provider, providerModels]) => (
+                <CommandGroup key={provider} heading={provider}>
+                  {providerModels.map((model) => (
                     <CommandItem
                       key={model.id}
                       value={model.id}
-                      keywords={[model.name, model.provider]}
+                      keywords={[model.name, model.provider, model.id]}
                       onSelect={handleSelect}
                       className="font-mono text-xs"
                     >
                       <Check
                         className={cn(
-                          "mr-2 h-4 w-4",
+                          "mr-2 h-4 w-4 shrink-0",
                           selectedIds.includes(model.id) ? "opacity-100" : "opacity-0"
                         )}
                       />
-                      {model.name}
-                      <span className="ml-auto text-muted-foreground opacity-50">{model.id}</span>
+                      <div className="flex flex-col">
+                        <span>{model.name}</span>
+                        <span className="text-[10px] text-muted-foreground opacity-70">{model.id}</span>
+                      </div>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -222,19 +268,19 @@ export function ModelSelector({
       {mode === 'multiple' && selectedIds.length > 0 && (
         <div className="flex flex-wrap gap-2 pt-2">
           {selectedIds.map(id => {
-            const model = POPULAR_MODELS.find(m => m.id === id);
             const member = getMember(id);
             const hasPersona = member?.persona && member.persona.trim().length > 0;
+            const modelName = getModelName(id);
 
             return (
-              <Badge key={id} variant="secondary" className={cn("rounded-none font-mono font-normal text-xs pr-1 pl-2 py-1 flex items-center gap-1", hasPersona && "border-primary/50 bg-primary/5")}>
-                <span>{model ? model.name : id}</span>
-                {hasPersona && <span className="text-[9px] text-primary ml-1 font-bold" title={member.persona}>(P)</span>}
+              <Badge key={id} variant="secondary" className={cn("rounded-none font-mono font-normal text-xs pr-1 pl-2 py-1 flex items-center gap-1 max-w-full", hasPersona && "border-primary/50 bg-primary/5")}>
+                <span className="truncate max-w-[150px]" title={modelName}>{modelName}</span>
+                {hasPersona && <span className="text-[9px] text-primary ml-1 font-bold shrink-0" title={member.persona}>(P)</span>}
 
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-4 w-4 ml-1 hover:bg-transparent text-muted-foreground hover:text-foreground"
+                  className="h-4 w-4 ml-1 hover:bg-transparent text-muted-foreground hover:text-foreground shrink-0"
                   onClick={(e) => handleEditPersona(id, e)}
                   title="Edit Persona"
                 >
@@ -244,7 +290,7 @@ export function ModelSelector({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-4 w-4 ml-1 hover:bg-transparent text-muted-foreground hover:text-foreground"
+                  className="h-4 w-4 ml-1 hover:bg-transparent text-muted-foreground hover:text-foreground shrink-0"
                   onClick={() => handleSelect(id)}
                 >
                   <X className="h-3 w-3" />

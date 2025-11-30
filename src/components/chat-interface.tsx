@@ -82,7 +82,13 @@ export default function ChatInterface() {
 3. **Decide:** Provide a final answer to the User's Query.
 
 Tone: Diplomatic but decisive. Acknowledge nuance, but do not equivocate.
-Format: Use clear headings or bullet points for the analysis if helpful, but keep the final answer direct.`;
+
+Format:
+## Analysis
+[Bulleted evaluation of each model's perspective]
+
+## Final Response
+[Your authoritative answer]`;
 
     const [judgePrompt, setJudgePrompt] = useState(DEFAULT_JUDGE_PROMPT);
     const [isJudgeConfigOpen, setIsJudgeConfigOpen] = useState(false);
@@ -273,7 +279,7 @@ Format: Use clear headings or bullet points for the analysis if helpful, but kee
             content: `User Query: ${userMessage}\n\n--- COUNCIL DELIBERATIONS ---\n${contextString}`,
             data: {
                 councilContext: contextString,
-                councilData: councilResponses,
+                councilData: councilResponses, // This now includes token counts (if we had them)
                 judgePrompt: judgePrompt // Pass the custom prompt
             }
         });

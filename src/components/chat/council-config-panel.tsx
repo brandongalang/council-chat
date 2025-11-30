@@ -80,7 +80,7 @@ export function CouncilConfigPanel({
     setIsSaveDialogOpen
 }: CouncilConfigPanelProps) {
     return (
-        <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10">
+        <div className="border-b bg-background z-10">
             <Collapsible
                 open={isConfigOpen}
                 onOpenChange={setIsConfigOpen}

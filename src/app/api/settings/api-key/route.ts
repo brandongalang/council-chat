@@ -1,17 +1,25 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { userApiKeys, profiles } from '@/db/schema';
 import { encrypt } from '@/lib/encryption';
 import { eq } from 'drizzle-orm';
 
-export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
+// Hardcoded user ID for local-only mode, matching src/app/api/chat/route.ts
+const USER_ID = 'local-user';
 
-  if (error || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+async function ensureLocalUser() {
+  const existingUser = await db.select().from(profiles).where(eq(profiles.id, USER_ID)).get();
+  if (!existingUser) {
+    await db.insert(profiles).values({
+      id: USER_ID,
+      email: 'local@user.com',
+      full_name: 'Local User',
+    });
   }
+}
+
+export async function POST(request: Request) {
+  await ensureLocalUser();
 
   const body = await request.json();
   const { apiKey } = body;
@@ -22,30 +30,23 @@ export async function POST(request: Request) {
 
   try {
     const encryptedKey = encrypt(apiKey);
-    
-    // Ensure profile exists (supabase auth user might not be in public.profiles yet if trigger failed or first time)
-    // Upsert profile first
-    await db.insert(profiles).values({
-        id: user.id,
-        email: user.email,
-    }).onConflictDoNothing();
 
     // Upsert key
     // We only support one key per provider ('openrouter') for now
     const existingKey = await db.query.userApiKeys.findFirst({
-        where: (keys, { and, eq }) => and(eq(keys.user_id, user.id), eq(keys.provider, 'openrouter'))
+      where: (keys, { and, eq }) => and(eq(keys.user_id, USER_ID), eq(keys.provider, 'openrouter'))
     });
 
     if (existingKey) {
-        await db.update(userApiKeys)
-            .set({ encrypted_key: encryptedKey, updated_at: new Date() })
-            .where(eq(userApiKeys.id, existingKey.id));
+      await db.update(userApiKeys)
+        .set({ encrypted_key: encryptedKey, updated_at: new Date().toISOString() })
+        .where(eq(userApiKeys.id, existingKey.id));
     } else {
-        await db.insert(userApiKeys).values({
-            user_id: user.id,
-            provider: 'openrouter',
-            encrypted_key: encryptedKey,
-        });
+      await db.insert(userApiKeys).values({
+        user_id: USER_ID,
+        provider: 'openrouter',
+        encrypted_key: encryptedKey,
+      });
     }
 
     return NextResponse.json({ success: true });
@@ -56,40 +57,30 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-    const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-  
-    if (error || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  await ensureLocalUser();
 
-    try {
-        const keyRecord = await db.query.userApiKeys.findFirst({
-            where: (keys, { and, eq }) => and(eq(keys.user_id, user.id), eq(keys.provider, 'openrouter'))
-        });
+  try {
+    const keyRecord = await db.query.userApiKeys.findFirst({
+      where: (keys, { and, eq }) => and(eq(keys.user_id, USER_ID), eq(keys.provider, 'openrouter'))
+    });
 
-        return NextResponse.json({ hasKey: !!keyRecord });
-    } catch (err) {
-        console.error('Error fetching API key status:', err);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-    }
+    return NextResponse.json({ hasKey: !!keyRecord });
+  } catch (err) {
+    console.error('Error fetching API key status:', err);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
 }
 
 export async function DELETE(request: Request) {
-    const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-  
-    if (error || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  await ensureLocalUser();
 
-    try {
-        await db.delete(userApiKeys)
-            .where(eq(userApiKeys.user_id, user.id));
-        
-        return NextResponse.json({ success: true });
-    } catch (err) {
-        console.error('Error deleting API key:', err);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-    }
+  try {
+    await db.delete(userApiKeys)
+      .where(eq(userApiKeys.user_id, USER_ID));
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting API key:', err);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
 }

@@ -1,4 +1,3 @@
-import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { councils } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -8,18 +7,13 @@ export async function GET(
     request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-
-    if (error || !user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const userId = 'local-user';
 
     const { id } = await params;
 
     try {
         const council = await db.query.councils.findFirst({
-            where: and(eq(councils.id, id), eq(councils.user_id, user.id)),
+            where: and(eq(councils.id, id), eq(councils.user_id, userId)),
             with: {
                 models: true
             }
@@ -40,19 +34,14 @@ export async function DELETE(
     request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-
-    if (error || !user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const userId = 'local-user';
 
     const { id } = await params;
 
     try {
         // Verify ownership and delete
         const deleted = await db.delete(councils)
-            .where(and(eq(councils.id, id), eq(councils.user_id, user.id)))
+            .where(and(eq(councils.id, id), eq(councils.user_id, userId)))
             .returning();
 
         if (deleted.length === 0) {
