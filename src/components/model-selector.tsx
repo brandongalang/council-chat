@@ -320,20 +320,22 @@ export function ModelSelector({
                           value={model.id}
                           keywords={[model.name, model.provider, model.id]}
                           onSelect={handleSelect}
-                          className="font-mono text-xs"
+                          className="font-mono text-xs flex-col items-start py-2"
                         >
-                          {mode === 'single' ? (
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4 flex-shrink-0",
-                                value === model.id ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                          ) : (
-                            <Plus className="mr-2 h-4 w-4 flex-shrink-0 opacity-50" />
-                          )}
-                          <span className="truncate">{model.name}</span>
-                          <span className="ml-auto text-muted-foreground opacity-50 text-[10px] truncate max-w-[150px]">{model.id}</span>
+                          <div className="flex items-center w-full">
+                            {mode === 'single' ? (
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4 flex-shrink-0",
+                                  value === model.id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                            ) : (
+                              <Plus className="mr-2 h-4 w-4 flex-shrink-0 opacity-50" />
+                            )}
+                            <span className="font-medium">{model.name}</span>
+                          </div>
+                          <span className="text-muted-foreground opacity-60 text-[10px] pl-6 mt-0.5">{model.id}</span>
                         </CommandItem>
                       ))}
                     </CommandGroup>
