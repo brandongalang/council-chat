@@ -1,15 +1,16 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import Database from 'better-sqlite3';
 import * as schema from './schema';
+import path from 'path';
 
-/** Database connection string from environment variables. */
-const connectionString = process.env.DATABASE_URL!;
+/** SQLite database file path */
+const dbPath = path.join(process.cwd(), 'sqlite.db');
 
-// Disable prefetch as it is not supported for "Transaction" pool mode
-const client = postgres(connectionString, { prepare: false });
+/** SQLite database instance */
+const sqlite = new Database(dbPath);
 
 /**
  * Drizzle ORM database instance.
- * configured with the postgres client and the schema.
+ * Configured with better-sqlite3 for local-only mode.
  */
-export const db = drizzle(client, { schema });
+export const db = drizzle(sqlite, { schema });
