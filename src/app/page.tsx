@@ -1,28 +1,11 @@
-import Link from 'next/link'
-import { ByokInput } from '@/components/byok-input'
-import { Button } from '@/components/ui/button'
+import { redirect } from 'next/navigation'
 
 /**
  * Landing page component.
- * Displays the welcome message and access to BYOK input or Login.
+ * Redirects directly to the chat interface in local-only mode.
  *
- * @returns The rendered landing page.
+ * @returns Redirects to /chat
  */
 export default function Home() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24 gap-8">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Council Chat</h1>
-        <p className="text-xl text-muted-foreground">Foundation Setup Complete</p>
-      </div>
-
-      <ByokInput />
-
-      <div className="flex gap-4">
-        <Button asChild>
-            <Link href="/login">Login / Sign Up</Link>
-        </Button>
-      </div>
-    </main>
-  );
+  redirect('/chat');
 }

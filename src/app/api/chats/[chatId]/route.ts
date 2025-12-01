@@ -1,26 +1,20 @@
-import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { messages } from '@/db/schema';
 import { asc, eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
+import { AppConfig } from '@/config/app-config';
 
 export async function GET(
     req: Request,
     { params }: { params: Promise<{ chatId: string }> }
 ) {
-    const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-
-    if (error || !user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    const userId = AppConfig.defaultUser.id;
     const { chatId } = await params;
 
     try {
         // Verify chat ownership
         const chat = await db.query.chats.findFirst({
-            where: (c, { and, eq }) => and(eq(c.id, chatId), eq(c.user_id, user.id))
+            where: (c, { and, eq }) => and(eq(c.id, chatId), eq(c.user_id, userId))
         });
 
         if (!chat) {

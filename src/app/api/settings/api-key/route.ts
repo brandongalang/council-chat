@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { userApiKeys, profiles } from '@/db/schema';
 import { encrypt } from '@/lib/encryption';
 import { eq } from 'drizzle-orm';
+import { AppConfig } from '@/config/app-config';
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
+  const userId = AppConfig.defaultUser.id;
 
-  if (error || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Ensure local user profile exists
+  const existingUser = await db.select().from(profiles).where(eq(profiles.id, userId)).get();
+  if (!existingUser) {
+    await db.insert(profiles).values({
+      id: userId,
+      email: AppConfig.defaultUser.email,
+      full_name: AppConfig.defaultUser.name,
+    });
   }
 
   const body = await request.json();
@@ -23,17 +28,10 @@ export async function POST(request: Request) {
   try {
     const encryptedKey = encrypt(apiKey);
     
-    // Ensure profile exists (supabase auth user might not be in public.profiles yet if trigger failed or first time)
-    // Upsert profile first
-    await db.insert(profiles).values({
-        id: user.id,
-        email: user.email,
-    }).onConflictDoNothing();
-
     // Upsert key
     // We only support one key per provider ('openrouter') for now
     const existingKey = await db.query.userApiKeys.findFirst({
-        where: (keys, { and, eq }) => and(eq(keys.user_id, user.id), eq(keys.provider, 'openrouter'))
+        where: (keys, { and, eq }) => and(eq(keys.user_id, userId), eq(keys.provider, 'openrouter'))
     });
 
     if (existingKey) {
@@ -42,7 +40,7 @@ export async function POST(request: Request) {
             .where(eq(userApiKeys.id, existingKey.id));
     } else {
         await db.insert(userApiKeys).values({
-            user_id: user.id,
+            user_id: userId,
             provider: 'openrouter',
             encrypted_key: encryptedKey,
         });
@@ -56,16 +54,11 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-    const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-  
-    if (error || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const userId = AppConfig.defaultUser.id;
 
     try {
         const keyRecord = await db.query.userApiKeys.findFirst({
-            where: (keys, { and, eq }) => and(eq(keys.user_id, user.id), eq(keys.provider, 'openrouter'))
+            where: (keys, { and, eq }) => and(eq(keys.user_id, userId), eq(keys.provider, 'openrouter'))
         });
 
         return NextResponse.json({ hasKey: !!keyRecord });
@@ -76,16 +69,11 @@ export async function GET(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-    const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-  
-    if (error || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const userId = AppConfig.defaultUser.id;
 
     try {
         await db.delete(userApiKeys)
-            .where(eq(userApiKeys.user_id, user.id));
+            .where(eq(userApiKeys.user_id, userId));
         
         return NextResponse.json({ success: true });
     } catch (err) {

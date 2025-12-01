@@ -1,18 +1,24 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { streamText } from 'ai';
-import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { userApiKeys, chats, messages as messagesTable } from '@/db/schema';
+import { userApiKeys, chats, messages as messagesTable, profiles } from '@/db/schema';
 import { decrypt } from '@/lib/encryption';
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
+import { AppConfig } from '@/config/app-config';
 
 export async function POST(req: Request) {
-  const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
+  // Local-only mode: Hardcoded user
+  const userId = AppConfig.defaultUser.id;
 
-  if (error || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Ensure local user profile exists
+  const existingUser = await db.select().from(profiles).where(eq(profiles.id, userId)).get();
+  if (!existingUser) {
+    await db.insert(profiles).values({
+      id: userId,
+      email: AppConfig.defaultUser.email,
+      full_name: AppConfig.defaultUser.name,
+    });
   }
 
   try {
@@ -31,7 +37,7 @@ export async function POST(req: Request) {
 
     // 1. Get API Key
     const keyRecord = await db.query.userApiKeys.findFirst({
-      where: (keys, { and, eq }) => and(eq(keys.user_id, user.id), eq(keys.provider, 'openrouter'))
+      where: (keys, { and, eq }) => and(eq(keys.user_id, userId), eq(keys.provider, 'openrouter'))
     });
 
     if (!keyRecord) {
@@ -63,14 +69,14 @@ export async function POST(req: Request) {
       const lastMsgContent = getMessageContent(messages[messages.length - 1]);
       const title = lastMsgContent.slice(0, 50) + '...';
       const [newChat] = await db.insert(chats).values({
-        user_id: user.id,
+        user_id: userId,
         title: title,
       }).returning();
       chatId = newChat.id;
     } else {
       // Verify ownership
       const chat = await db.query.chats.findFirst({
-        where: (c, { and, eq }) => and(eq(c.id, chatId), eq(c.user_id, user.id))
+        where: (c, { and, eq }) => and(eq(c.id, chatId), eq(c.user_id, userId))
       });
       if (!chat) {
         return NextResponse.json({ error: 'Invalid Chat ID' }, { status: 404 });
