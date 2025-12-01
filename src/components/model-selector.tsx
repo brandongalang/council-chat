@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from "react"
-import { Check, ChevronsUpDown, X } from "lucide-react"
+import { Check, ChevronsUpDown, X, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,19 +37,19 @@ export interface Model {
 }
 
 /**
- * List of popular models available for selection.
+ * List of popular models available for selection (fallback).
  */
 export const POPULAR_MODELS: Model[] = [
-  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
-  { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI' },
-  { id: 'openai/o1-preview', name: 'o1 Preview', provider: 'OpenAI' },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
-  { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus', provider: 'Anthropic' },
-  { id: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5', provider: 'Google' },
-  { id: 'google/gemini-flash-1.5', name: 'Gemini Flash 1.5', provider: 'Google' },
-  { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', provider: 'Meta' },
-  { id: 'meta-llama/llama-3.1-405b-instruct', name: 'Llama 3.1 405B', provider: 'Meta' },
-  { id: 'mistralai/mistral-large', name: 'Mistral Large', provider: 'Mistral' },
+  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'openai' },
+  { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai' },
+  { id: 'openai/o1-preview', name: 'o1 Preview', provider: 'openai' },
+  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'anthropic' },
+  { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus', provider: 'anthropic' },
+  { id: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5', provider: 'google' },
+  { id: 'google/gemini-flash-1.5', name: 'Gemini Flash 1.5', provider: 'google' },
+  { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', provider: 'meta-llama' },
+  { id: 'meta-llama/llama-3.1-405b-instruct', name: 'Llama 3.1 405B', provider: 'meta-llama' },
+  { id: 'mistralai/mistral-large', name: 'Mistral Large', provider: 'mistralai' },
 ]
 
 /**
@@ -89,10 +89,56 @@ export function ModelSelector({
 }: ModelSelectorProps) {
   const [open, setOpen] = React.useState(false)
   const [customModel, setCustomModel] = React.useState("")
+  const [allModels, setAllModels] = React.useState<Model[]>(POPULAR_MODELS)
+  const [isLoading, setIsLoading] = React.useState(false)
+  const [hasFetched, setHasFetched] = React.useState(false)
 
   // Persona Editing State
   const [editingMember, setEditingMember] = React.useState<CouncilMember | null>(null)
   const [personaInput, setPersonaInput] = React.useState("")
+
+  // Fetch all models when popover opens
+  React.useEffect(() => {
+    if (open && !hasFetched) {
+      setIsLoading(true)
+      fetch('/api/models')
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setAllModels(data)
+          }
+          setHasFetched(true)
+        })
+        .catch(err => {
+          console.error('Failed to fetch models:', err)
+          // Keep using POPULAR_MODELS as fallback
+        })
+        .finally(() => setIsLoading(false))
+    }
+  }, [open, hasFetched])
+
+  // Group models by provider
+  const modelsByProvider = React.useMemo(() => {
+    const groups: Record<string, Model[]> = {}
+    allModels.forEach(model => {
+      const provider = model.provider || 'other'
+      if (!groups[provider]) {
+        groups[provider] = []
+      }
+      groups[provider].push(model)
+    })
+    // Sort providers alphabetically, but put popular ones first
+    const priorityProviders = ['openai', 'anthropic', 'google', 'meta-llama', 'mistralai']
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+      const aIndex = priorityProviders.indexOf(a.toLowerCase())
+      const bIndex = priorityProviders.indexOf(b.toLowerCase())
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
+      if (aIndex !== -1) return -1
+      if (bIndex !== -1) return 1
+      return a.localeCompare(b)
+    })
+    return { groups, sortedKeys }
+  }, [allModels])
 
   // Normalize value to array of IDs for selection logic
   const selectedIds = React.useMemo(() => {
@@ -160,8 +206,24 @@ export function ModelSelector({
   }
 
   const getModelName = (id: string) => {
-    const model = POPULAR_MODELS.find(m => m.id === id)
+    const model = allModels.find(m => m.id === id) || POPULAR_MODELS.find(m => m.id === id)
     return model ? model.name : id
+  }
+
+  const formatProviderName = (provider: string) => {
+    // Capitalize and format provider names nicely
+    const nameMap: Record<string, string> = {
+      'openai': 'OpenAI',
+      'anthropic': 'Anthropic',
+      'google': 'Google',
+      'meta-llama': 'Meta Llama',
+      'mistralai': 'Mistral AI',
+      'cohere': 'Cohere',
+      'perplexity': 'Perplexity',
+      'deepseek': 'DeepSeek',
+      'x-ai': 'xAI',
+    }
+    return nameMap[provider.toLowerCase()] || provider.charAt(0).toUpperCase() + provider.slice(1)
   }
 
   return (
@@ -187,61 +249,70 @@ export function ModelSelector({
           style={{ backgroundColor: 'hsl(var(--popover))' }}
         >
           <Command className="rounded-none" style={{ backgroundColor: 'hsl(var(--popover))' }}>
-            <CommandInput placeholder="Search models..." className="font-mono text-xs" />
-            <CommandList>
-              <CommandEmpty>
-                <div className="p-2 text-xs font-mono">
-                  <p className="mb-2">No preset found.</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="flex h-8 w-full rounded-none border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                      placeholder="Enter custom ID (e.g. provider/model)"
-                      value={customModel}
-                      onChange={(e) => setCustomModel(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && customModel) {
-                          handleSelect(customModel)
-                          setCustomModel("")
-                        }
-                      }}
-                    />
-                    <Button
-                      size="sm"
-                      className="h-8 rounded-none"
-                      onClick={() => {
-                        if (customModel) {
-                          handleSelect(customModel)
-                          setCustomModel("")
-                        }
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </div>
+            <CommandInput placeholder="Search all OpenRouter models..." className="font-mono text-xs" />
+            <CommandList className="max-h-[400px]">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-xs font-mono">Loading models...</span>
                 </div>
-              </CommandEmpty>
-              {['Anthropic', 'OpenAI', 'Google', 'Other'].map(provider => (
-                <CommandGroup key={provider} heading={provider === 'Other' ? 'Open Source / Others' : provider}>
-                  {POPULAR_MODELS.filter(m => provider === 'Other' ? !['Anthropic', 'OpenAI', 'Google'].includes(m.provider) : m.provider === provider).map((model) => (
-                    <CommandItem
-                      key={model.id}
-                      value={model.id}
-                      keywords={[model.name, model.provider]}
-                      onSelect={handleSelect}
-                      className="font-mono text-xs"
-                    >
-                      <Check
-                        className={cn(
-                          "mr-2 h-4 w-4",
-                          selectedIds.includes(model.id) ? "opacity-100" : "opacity-0"
-                        )}
-                      />
-                      {model.name}
-                      <span className="ml-auto text-muted-foreground opacity-50">{model.id}</span>
-                    </CommandItem>
+              ) : (
+                <>
+                  <CommandEmpty>
+                    <div className="p-2 text-xs font-mono">
+                      <p className="mb-2">No model found.</p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="flex h-8 w-full rounded-none border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                          placeholder="Enter custom ID (e.g. provider/model)"
+                          value={customModel}
+                          onChange={(e) => setCustomModel(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && customModel) {
+                              handleSelect(customModel)
+                              setCustomModel("")
+                            }
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          className="h-8 rounded-none"
+                          onClick={() => {
+                            if (customModel) {
+                              handleSelect(customModel)
+                              setCustomModel("")
+                            }
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    </div>
+                  </CommandEmpty>
+                  {modelsByProvider.sortedKeys.map(provider => (
+                    <CommandGroup key={provider} heading={formatProviderName(provider)}>
+                      {modelsByProvider.groups[provider].map((model) => (
+                        <CommandItem
+                          key={model.id}
+                          value={model.id}
+                          keywords={[model.name, model.provider, model.id]}
+                          onSelect={handleSelect}
+                          className="font-mono text-xs"
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4 flex-shrink-0",
+                              selectedIds.includes(model.id) ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <span className="truncate">{model.name}</span>
+                          <span className="ml-auto text-muted-foreground opacity-50 text-[10px] truncate max-w-[150px]">{model.id}</span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
                   ))}
-                </CommandGroup>
-              ))}
+                </>
+              )}
             </CommandList>
           </Command>
         </PopoverContent>
@@ -251,7 +322,7 @@ export function ModelSelector({
       {mode === 'multiple' && selectedIds.length > 0 && (
         <div className="flex flex-wrap gap-2 pt-2">
           {selectedIds.map(id => {
-            const model = POPULAR_MODELS.find(m => m.id === id);
+            const model = allModels.find(m => m.id === id) || POPULAR_MODELS.find(m => m.id === id);
             const member = getMember(id);
             const hasPersona = member?.persona && member.persona.trim().length > 0;
 
