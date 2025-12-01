@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from "react"
-import { Check, ChevronsUpDown, X, Loader2 } from "lucide-react"
+import { Check, ChevronsUpDown, X, Loader2, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -42,6 +42,8 @@ interface ModelSelectorProps {
   onValueChange: (value: any) => void
   mode?: 'single' | 'multiple'
   className?: string
+  showCouncilOption?: boolean
+  onCouncilSelect?: () => void
 }
 
 export function ModelSelector({
@@ -49,24 +51,33 @@ export function ModelSelector({
   onValueChange,
   mode = 'single',
   className,
+  showCouncilOption = false,
+  onCouncilSelect,
 }: ModelSelectorProps) {
   const [open, setOpen] = React.useState(false)
   const [customModel, setCustomModel] = React.useState("")
   const [models, setModels] = React.useState<Model[]>([])
+  const [savedModels, setSavedModels] = React.useState<string[]>([])
   const [loading, setLoading] = React.useState(false)
 
   // Persona Editing State
   const [editingMember, setEditingMember] = React.useState<CouncilMember | null>(null)
   const [personaInput, setPersonaInput] = React.useState("")
 
+  const [providerFilter, setProviderFilter] = React.useState<string>('all')
+
   // Fetch models on mount
   React.useEffect(() => {
     const fetchModels = async () => {
       setLoading(true)
       try {
-        const res = await fetch('/api/models')
-        if (res.ok) {
-          const data = await res.json()
+        const [modelsRes, savedRes] = await Promise.all([
+          fetch('/api/models'),
+          fetch('/api/settings/models')
+        ])
+
+        if (modelsRes.ok) {
+          const data = await modelsRes.json()
           // Map OpenRouter data to our Model interface
           const mappedModels: Model[] = data.data.map((m: any) => ({
             id: m.id,
@@ -80,8 +91,11 @@ export function ModelSelector({
           })).sort((a: Model, b: Model) => a.name.localeCompare(b.name))
 
           setModels(mappedModels)
-        } else {
-          console.error("Failed to fetch models")
+        }
+
+        if (savedRes.ok) {
+          const savedData = await savedRes.json()
+          setSavedModels(savedData.map((m: any) => m.model_id))
         }
       } catch (error) {
         console.error("Error fetching models:", error)
@@ -166,11 +180,31 @@ export function ModelSelector({
     const groups: Record<string, Model[]> = {}
     models.forEach(model => {
       const provider = model.provider
+      // Filter logic
+      if (providerFilter !== 'all' && provider !== providerFilter) return;
+
       if (!groups[provider]) groups[provider] = []
       groups[provider].push(model)
     })
     return groups
-  }, [models])
+  }, [models, providerFilter])
+
+  // Filtered Saved Models
+  const filteredSavedModels = React.useMemo(() => {
+    if (providerFilter === 'all') return savedModels;
+    return savedModels.filter(id => {
+      const m = models.find(mod => mod.id === id);
+      return m?.provider === providerFilter;
+    });
+  }, [savedModels, models, providerFilter]);
+
+  // Unique Providers for Filter
+  const providers = React.useMemo(() => {
+    const p = new Set(models.map(m => m.provider));
+    return Array.from(p).sort();
+  }, [models]);
+
+  const commonProviders = ['openai', 'anthropic', 'google', 'meta-llama', 'mistralai'];
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
@@ -191,7 +225,29 @@ export function ModelSelector({
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[400px] p-0 rounded-none" align="start">
+        <PopoverContent className="w-[400px] p-0 rounded-none bg-popover border border-border shadow-lg" align="start">
+          <div className="p-2 border-b border-border flex gap-1 overflow-x-auto no-scrollbar">
+            <Button
+              variant={providerFilter === 'all' ? "secondary" : "ghost"}
+              size="sm"
+              className="h-6 text-[10px] rounded-full px-2"
+              onClick={() => setProviderFilter('all')}
+            >
+              All
+            </Button>
+            {commonProviders.filter(p => providers.includes(p)).map(p => (
+              <Button
+                key={p}
+                variant={providerFilter === p ? "secondary" : "ghost"}
+                size="sm"
+                className="h-6 text-[10px] rounded-full px-2 capitalize"
+                onClick={() => setProviderFilter(p)}
+              >
+                {p.replace('meta-llama', 'Meta').replace('mistralai', 'Mistral')}
+              </Button>
+            ))}
+            {/* Add 'Other' if needed or just rely on search */}
+          </div>
           <Command className="rounded-none">
             <CommandInput placeholder="Search models..." className="font-mono text-xs" />
             <CommandList>
@@ -235,6 +291,63 @@ export function ModelSelector({
                   )}
                 </div>
               </CommandEmpty>
+              {showCouncilOption && providerFilter === 'all' && (
+                <CommandGroup heading="Special Modes">
+                  <CommandItem
+                    value="council_mode_trigger"
+                    onSelect={() => {
+                      if (onCouncilSelect) onCouncilSelect();
+                      setOpen(false);
+                    }}
+                    className="font-mono text-xs font-bold text-primary"
+                  >
+                    <Users className="mr-2 h-4 w-4" />
+                    Council Mode
+                  </CommandItem>
+                </CommandGroup>
+              )}
+              {filteredSavedModels.length > 0 && (
+                <CommandGroup heading="Saved Models">
+                  {filteredSavedModels.map((modelId) => {
+                    const model = models.find(m => m.id === modelId)
+                    return (
+                      <CommandItem
+                        key={`saved-${modelId}`}
+                        value={modelId}
+                        keywords={[model?.name || modelId, model?.provider || 'saved', modelId]}
+                        onSelect={handleSelect}
+                        className="font-mono text-xs"
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4 shrink-0",
+                            selectedIds.includes(modelId) ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <div className="flex flex-col w-full">
+                          <div className="flex items-center justify-between">
+                            <span>{model?.name || modelId}</span>
+                            {model?.pricing && (
+                              <span className="text-[10px] text-muted-foreground">
+                                ${(model.pricing.prompt + model.pricing.completion).toFixed(2)}/1M
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground opacity-70">
+                            <span>{modelId}</span>
+                            {model?.context_length && (
+                              <>
+                                <span>•</span>
+                                <span>{Math.round(model.context_length / 1000)}k ctx</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </CommandItem>
+                    )
+                  })}
+                </CommandGroup>
+              )}
               {!loading && Object.entries(groupedModels).map(([provider, providerModels]) => (
                 <CommandGroup key={provider} heading={provider}>
                   {providerModels.map((model) => (
@@ -251,9 +364,24 @@ export function ModelSelector({
                           selectedIds.includes(model.id) ? "opacity-100" : "opacity-0"
                         )}
                       />
-                      <div className="flex flex-col">
-                        <span>{model.name}</span>
-                        <span className="text-[10px] text-muted-foreground opacity-70">{model.id}</span>
+                      <div className="flex flex-col w-full">
+                        <div className="flex items-center justify-between">
+                          <span>{model.name}</span>
+                          {model.pricing && (
+                            <span className="text-[10px] text-muted-foreground">
+                              ${(model.pricing.prompt + model.pricing.completion).toFixed(2)}/1M
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground opacity-70">
+                          <span>{model.id}</span>
+                          {model.context_length && (
+                            <>
+                              <span>•</span>
+                              <span>{Math.round(model.context_length / 1000)}k ctx</span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </CommandItem>
                   ))}

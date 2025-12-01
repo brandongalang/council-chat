@@ -1,35 +1,41 @@
+'use client';
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface ModelBreakdownProps {
-    data: { modelId: string; cost: number; count: number }[];
+    data: Array<{
+        modelId: string;
+        cost: number;
+        count: number;
+    }>;
 }
 
 export function ModelBreakdown({ data }: ModelBreakdownProps) {
     return (
         <Card className="col-span-3">
             <CardHeader>
-                <CardTitle>Top Models by Cost</CardTitle>
+                <CardTitle>Cost by Model</CardTitle>
             </CardHeader>
             <CardContent>
-                <div className="space-y-8">
-                    {data.map((item) => (
-                        <div key={item.modelId} className="flex items-center">
-                            <Avatar className="h-9 w-9">
-                                <AvatarFallback>{item.modelId[0].toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <div className="ml-4 space-y-1">
-                                <p className="text-sm font-medium leading-none">{item.modelId.split('/').pop()}</p>
-                                <p className="text-xs text-muted-foreground">
-                                    {item.count} responses
-                                </p>
-                            </div>
-                            <div className="ml-auto font-medium">
-                                ${item.cost.toFixed(4)}
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Model</TableHead>
+                            <TableHead className="text-right">Calls</TableHead>
+                            <TableHead className="text-right">Cost</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {data.map((item) => (
+                            <TableRow key={item.modelId}>
+                                <TableCell className="font-medium text-xs font-mono">{item.modelId.split('/').pop()}</TableCell>
+                                <TableCell className="text-right">{item.count}</TableCell>
+                                <TableCell className="text-right">${item.cost.toFixed(4)}</TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
             </CardContent>
         </Card>
     );

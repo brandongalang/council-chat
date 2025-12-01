@@ -9,12 +9,13 @@ import { User, Bot, ChevronRight } from 'lucide-react';
 import { CouncilAccordion } from '@/components/council/council-accordion';
 import { CouncilResponse } from '@/types/council';
 import { calculateCost } from '@/lib/pricing';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { MessageCostBreakdown } from './message-cost-breakdown';
 
 interface ChatMessageProps {
   message: Message;
@@ -23,6 +24,7 @@ interface ChatMessageProps {
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
+  const [wasAnalysisAutoOpened, setWasAnalysisAutoOpened] = useState(false);
 
   // Extract council responses from annotations if they exist
   // We assume the first annotation might be our Council Data
@@ -36,19 +38,51 @@ export function ChatMessage({ message }: ChatMessageProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mainContent = (message as any).content;
   let hasStructuredOutput = false;
+  let isAnalysisStreaming = false;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (!isUser && (message as any).content.includes('## Analysis')) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const parts = (message as any).content.split('## Final Response');
-    const analysisParts = parts[0].split('## Analysis');
-    if (analysisParts.length > 1) {
-      analysisContent = analysisParts[1].trim();
+  const content = (message as any).content || '';
+
+  if (!isUser && content.includes('## Analysis')) {
+    // Check if we have a Final Response yet
+    const parts = content.split('## Final Response');
+
+    // Everything before "Final Response" is considered analysis/synthesis
+    // We strip the "## Analysis" header from the display since we have a UI header
+    const fullAnalysis = parts[0].replace('## Analysis', '').trim();
+
+    if (fullAnalysis) {
+      analysisContent = fullAnalysis;
       hasStructuredOutput = true;
-      // If we have a final response part, use it. Otherwise (streaming analysis), main content is empty.
-      mainContent = parts.length > 1 ? parts[1].trim() : '';
+    }
+
+    if (parts.length > 1) {
+      // We have a Final Response
+      mainContent = parts[1].trim();
+      isAnalysisStreaming = false;
+    } else {
+      // We are still in the Analysis/Synthesis phase (or it finished but no final response tag yet)
+      mainContent = ''; // Hide main content while streaming analysis
+      isAnalysisStreaming = true;
     }
   }
+
+  // Auto-expand/collapse logic
+  // We use a ref or effect? Better to use effect to react to streaming changes.
+  // Actually, we can just derive state if we are careful, but we need to persist user overrides.
+  // Let's use a simple effect.
+
+  // Effect to handle auto-opening/closing
+  // We need to import useEffect
+  useEffect(() => {
+    if (isAnalysisStreaming && !isAnalysisOpen && !wasAnalysisAutoOpened) {
+      setIsAnalysisOpen(true);
+      setWasAnalysisAutoOpened(true);
+    } else if (!isAnalysisStreaming && wasAnalysisAutoOpened && isAnalysisOpen) {
+      // Once streaming finishes (Final Response appears), collapse it if it was auto-opened
+      setIsAnalysisOpen(false);
+    }
+  }, [isAnalysisStreaming, wasAnalysisAutoOpened, isAnalysisOpen]);
 
   return (
     <div className={cn(
@@ -131,6 +165,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
             )}
           </div>
         )}
+
+        {/* Cost Breakdown */}
+        <MessageCostBreakdown message={message} />
       </div>
     </div>
   );

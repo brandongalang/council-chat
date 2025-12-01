@@ -74,26 +74,31 @@ export default function ChatInterface() {
     const [presetName, setPresetName] = useState('');
     const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
 
+    const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+
     // Judge Config State
-    const DEFAULT_JUDGE_PROMPT = `You are the Chief Justice of an AI Council. Your role is to synthesize the perspectives provided above into a single, authoritative response.
+    const DEFAULT_JUDGE_PROMPT = `You are a synthesis expert. You will receive responses from multiple AI models to the same user query. Your task is to:
 
-1. **Analyze:** Briefly evaluate the strengths and weaknesses of each Council Member's argument.
-2. **Synthesize:** Merge the best insights from all members.
-3. **Decide:** Provide a final answer to the User's Query.
+1. Analyze each response for its unique strengths and weaknesses
+2. Compare responses to identify what each model does better or worse than others
+3. Synthesize the best elements into a comprehensive final response
 
-Tone: Diplomatic but decisive. Acknowledge nuance, but do not equivocate.
+Format your response as:
 
-Format:
 ## Analysis
-[Bulleted evaluation of each model's perspective]
+[For each model, provide 2-3 bullet points on strengths and weaknesses]
+
+## Synthesis Approach
+[Explain which elements you're taking from which model and why]
 
 ## Final Response
-[Your authoritative answer]`;
+[Your synthesized answer that incorporates the best of all responses]
+`;
 
     const [judgePrompt, setJudgePrompt] = useState(DEFAULT_JUDGE_PROMPT);
     const [isJudgeConfigOpen, setIsJudgeConfigOpen] = useState(false);
 
-    const { generateCouncilResponses, isCouncilActive } = useCouncil();
+    const { generateCouncilResponses, isCouncilActive, retryMember } = useCouncil();
 
     // Fetch presets on mount
     useEffect(() => {
@@ -129,10 +134,12 @@ Format:
             });
 
             if (res.ok) {
+                const newPreset = await res.json();
                 toast.success('Preset saved');
                 setPresetName('');
                 setIsSaveDialogOpen(false);
-                fetchPresets();
+                await fetchPresets();
+                setSelectedPresetId(newPreset.id); // Select the new preset
             } else {
                 toast.error('Failed to save preset');
             }
@@ -142,8 +149,15 @@ Format:
     };
 
     const handleLoadPreset = (presetId: string) => {
+        if (presetId === 'adhoc') {
+            setSelectedPresetId(null);
+            // Optionally reset to defaults or keep current
+            return;
+        }
+
         const preset = presets.find(p => p.id === presetId);
         if (preset) {
+            setSelectedPresetId(presetId);
             setJudgeModel(preset.judge_model || 'openai/gpt-4o');
 
             // Load Judge Prompt
@@ -271,15 +285,16 @@ Format:
         );
 
         // 3. Prepare Context for Judge
-        const contextString = councilResponses.map(r => `[Agent: ${r.modelName}]\n${r.content}`).join('\n\n');
+        // 3. Prepare Context for Judge
+        // We no longer construct the context string here for the message content.
+        // The backend will handle the prompt construction using councilData.
 
         // Trigger Judge (The actual Chat Item)
         await append({
             role: 'user',
-            content: `User Query: ${userMessage}\n\n--- COUNCIL DELIBERATIONS ---\n${contextString}`,
+            content: userMessage, // Send only the user message
             data: {
-                councilContext: contextString,
-                councilData: councilResponses, // This now includes token counts (if we had them)
+                councilData: councilResponses, // Backend uses this to build the prompt
                 judgePrompt: judgePrompt // Pass the custom prompt
             }
         });
@@ -326,15 +341,16 @@ Format:
                     setIsJudgeConfigOpen={setIsJudgeConfigOpen}
                     isSaveDialogOpen={isSaveDialogOpen}
                     setIsSaveDialogOpen={setIsSaveDialogOpen}
+                    messages={messages}
+                    selectedPresetId={selectedPresetId}
+                    setSelectedPresetId={setSelectedPresetId}
                 />
 
                 <div className="flex-1 overflow-hidden flex flex-col relative">
-                    <ChatList messages={messages} isLoading={isLoading} />
-
                     {/* Council Accordion Overlay (While deliberating) */}
                     {isCouncilActive && (
-                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t animate-in slide-in-from-bottom-10 max-h-[50vh] overflow-y-auto shadow-2xl z-20">
-                            <CouncilAccordion responses={temporaryCouncilResponses} />
+                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-card border-t shadow-lg animate-in slide-in-from-bottom-10 max-h-[50vh] overflow-y-auto z-20">
+                            <CouncilAccordion responses={temporaryCouncilResponses} onRetry={retryMember} />
                         </div>
                     )}
                 </div>

@@ -76,24 +76,48 @@ export async function POST(req: Request) {
     const processedMessages = [...messages];
     let systemPrompt = undefined;
 
-    // If councilContext is present, inject it into the last message content for the LLM only
-    if (councilContext && processedMessages.length > 0) {
+    // Helper to build the Judge's user prompt
+    const buildJudgeUserPrompt = (
+      userMessage: string,
+      responses: Array<{ modelName: string; content: string }>
+    ) => `
+User Query: ${userMessage}
+
+Model Responses:
+${responses.map(r => `
+### ${r.modelName}
+${r.content}
+`).join('\n')}
+
+Please analyze these responses and provide your synthesis.
+`;
+
+    // If councilData is present, inject it into the last message content for the LLM only
+    if (councilData && processedMessages.length > 0) {
       const lastMsg = processedMessages[processedMessages.length - 1];
       const originalContent = lastMsg.content;
 
-      systemPrompt = judgePrompt || `You are the Chief Justice of an AI Council. Your role is to synthesize the perspectives provided above into a single, authoritative response.
+      systemPrompt = judgePrompt || `You are a synthesis expert. You will receive responses from multiple AI models to the same user query. Your task is to:
 
-1. **Analyze:** Briefly evaluate the strengths and weaknesses of each Council Member's argument.
-2. **Synthesize:** Merge the best insights from all members.
-3. **Decide:** Provide a final answer to the User's Query.
+1. Analyze each response for its unique strengths and weaknesses
+2. Compare responses to identify what each model does better or worse than others
+3. Synthesize the best elements into a comprehensive final response
 
-Tone: Diplomatic but decisive. Acknowledge nuance, but do not equivocate.
-Format: Use clear headings or bullet points for the analysis if helpful, but keep the final answer direct.`;
+Format your response as:
 
-      lastMsg.content = `User Query: ${originalContent}
+## Analysis
+[For each model, provide 2-3 bullet points on strengths and weaknesses]
 
---- COUNCIL DELIBERATIONS ---
-${councilContext}`;
+## Synthesis Approach
+[Explain which elements you're taking from which model and why]
+
+## Final Response
+[Your synthesized answer that incorporates the best of all responses]
+`;
+
+      // Construct the full prompt for the Judge
+      lastMsg.content = buildJudgeUserPrompt(originalContent, councilData);
+
     } else if (persona) {
       systemPrompt = persona;
     }
@@ -105,13 +129,19 @@ ${councilContext}`;
       onFinish: async ({ text, usage }) => {
         // Save the assistant's response to the database
         if (save && chatId) {
+          const promptTokens = (usage as any)?.promptTokens || 0;
+          const completionTokens = (usage as any)?.completionTokens || 0;
+          const cost = calculateCost(targetModel, promptTokens, completionTokens);
+
           const [assistantMsg] = await db.insert(messagesTable).values({
             chat_id: chatId,
             role: 'assistant',
             content: text,
             annotations: councilData ? JSON.stringify(councilData) : null,
-            prompt_tokens: (usage as any)?.promptTokens || 0,
-            completion_tokens: (usage as any)?.completionTokens || 0,
+            prompt_tokens: promptTokens,
+            completion_tokens: completionTokens,
+            cost: cost,
+            model: targetModel,
           }).returning();
 
           // Save Council Metrics if available
@@ -139,10 +169,39 @@ ${councilContext}`;
       },
     });
 
-    const response = result.toTextStreamResponse();
-    if (chatId) {
-      response.headers.set('X-Chat-Id', chatId);
-    }
+    // Create a custom stream to append usage data
+    const stream = new ReadableStream({
+      async start(controller) {
+        const reader = result.textStream.getReader();
+        const encoder = new TextEncoder();
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(encoder.encode(value));
+          }
+
+          // Append usage data
+          const usage = await result.usage;
+          if (usage) {
+            controller.enqueue(encoder.encode(`\n__USAGE__:${JSON.stringify(usage)}`));
+          }
+        } catch (err) {
+          controller.error(err);
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    const response = new Response(stream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        ...(chatId ? { 'X-Chat-Id': chatId } : {})
+      }
+    });
+
     return response;
 
   } catch (err) {

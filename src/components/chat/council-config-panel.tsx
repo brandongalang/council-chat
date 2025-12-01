@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
     Collapsible,
     CollapsibleContent,
@@ -13,12 +13,14 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { Settings2, Menu, Edit2 } from 'lucide-react'
+import { Settings2, Menu, Edit2, User, Users, Save } from 'lucide-react'
 import { ModelSelector, CouncilMember } from '@/components/model-selector'
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { ChatSidebar } from '@/components/chat-sidebar'
 import { JudgeConfigDialog } from './judge-config-dialog'
 import { PresetSaveDialog } from './preset-save-dialog'
+import { ConversationStats } from './conversation-stats'
+import { UIMessage } from '@ai-sdk/react'
 
 interface CouncilConfigPanelProps {
     mode: 'solo' | 'council'
@@ -48,6 +50,9 @@ interface CouncilConfigPanelProps {
     setIsJudgeConfigOpen: (open: boolean) => void
     isSaveDialogOpen: boolean
     setIsSaveDialogOpen: (open: boolean) => void
+    messages: UIMessage[]
+    selectedPresetId: string | null
+    setSelectedPresetId: (id: string | null) => void
 }
 
 export function CouncilConfigPanel({
@@ -77,7 +82,10 @@ export function CouncilConfigPanel({
     isJudgeConfigOpen,
     setIsJudgeConfigOpen,
     isSaveDialogOpen,
-    setIsSaveDialogOpen
+    setIsSaveDialogOpen,
+    messages,
+    selectedPresetId,
+    setSelectedPresetId
 }: CouncilConfigPanelProps) {
     return (
         <div className="border-b bg-background z-10">
@@ -110,12 +118,9 @@ export function CouncilConfigPanel({
                             </SheetContent>
                         </Sheet>
                         <h2 className="text-sm font-serif font-medium">Session Settings</h2>
-                        <Tabs value={mode} onValueChange={(v: string) => setMode(v as 'solo' | 'council')} className="w-[180px] h-8">
-                            <TabsList className="grid w-full grid-cols-2 h-8">
-                                <TabsTrigger value="solo" className="text-xs font-mono h-6">Solo</TabsTrigger>
-                                <TabsTrigger value="council" className="text-xs font-mono h-6">Council</TabsTrigger>
-                            </TabsList>
-                        </Tabs>
+                        <div className="hidden md:block ml-4">
+                            <ConversationStats messages={messages} />
+                        </div>
                     </div>
 
                     <CollapsibleTrigger asChild>
@@ -127,17 +132,31 @@ export function CouncilConfigPanel({
                 </div>
 
                 <CollapsibleContent className="px-4 pb-4 space-y-4">
-                    {mode === 'solo' ? (
-                        <div className="space-y-2 pt-2">
-                            <label className="text-xs font-mono text-muted-foreground uppercase">Model</label>
-                            <ModelSelector
-                                mode="single"
-                                value={soloModel}
-                                onValueChange={(val) => setSoloModel(val as string)}
-                            />
+                    <Tabs value={mode} onValueChange={(v) => setMode(v as 'solo' | 'council')} className="w-full">
+                        <TabsList className="grid w-full grid-cols-2 mb-4">
+                            <TabsTrigger value="solo" className="flex items-center gap-2">
+                                <User className="w-4 h-4" />
+                                Solo Mode
+                            </TabsTrigger>
+                            <TabsTrigger value="council" className="flex items-center gap-2">
+                                <Users className="w-4 h-4" />
+                                Council Mode
+                            </TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="solo" className="space-y-4 mt-0">
                             <div className="space-y-2">
+                                <label className="text-xs font-mono text-muted-foreground uppercase">Model</label>
+                                <ModelSelector
+                                    mode="single"
+                                    value={soloModel}
+                                    onValueChange={(val) => setSoloModel(val as string)}
+                                />
+                            </div>
+
+                            <div className="space-y-2 pt-2 border-t border-border/50">
                                 <div className="flex items-center justify-between">
-                                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Judge Model</Label>
+                                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Judge Model (Optional)</Label>
                                     <JudgeConfigDialog
                                         judgePrompt={judgePrompt}
                                         setJudgePrompt={setJudgePrompt}
@@ -157,30 +176,77 @@ export function CouncilConfigPanel({
                                     onValueChange={(val) => setJudgeModel(val as string)}
                                 />
                             </div>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                            {/* Preset Controls */}
-                            <div className="md:col-span-2 flex items-center gap-2 mb-2 p-2 bg-muted/30 rounded-md border border-dashed">
-                                <div className="flex-1">
-                                    <Select onValueChange={onLoadPreset}>
-                                        <SelectTrigger className="h-8 text-xs font-mono">
-                                            <SelectValue placeholder="Load a Council Preset..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {presets.map((preset) => (
-                                                <SelectItem key={preset.id} value={preset.id} className="text-xs font-mono">
-                                                    <div className="flex items-center justify-between w-full gap-4">
-                                                        <span>{preset.name}</span>
-                                                        <span className="text-muted-foreground text-[10px]">{preset.models?.length} members</span>
-                                                    </div>
-                                                </SelectItem>
-                                            ))}
-                                            {presets.length === 0 && <div className="p-2 text-xs text-muted-foreground">No presets saved</div>}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                        </TabsContent>
 
+                        <TabsContent value="council" className="space-y-4 mt-0">
+                            {/* Preset Controls */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-mono text-muted-foreground uppercase">Load Preset</label>
+                                <Select value={selectedPresetId || 'adhoc'} onValueChange={onLoadPreset}>
+                                    <SelectTrigger className="h-9 text-sm">
+                                        <SelectValue placeholder="Select a preset..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="adhoc">
+                                            <span className="font-medium">Ad-hoc Session</span>
+                                            <span className="ml-2 text-xs text-muted-foreground">(Custom)</span>
+                                        </SelectItem>
+                                        {presets.map((preset) => (
+                                            <SelectItem key={preset.id} value={preset.id}>
+                                                <div className="flex items-center justify-between w-full gap-4">
+                                                    <span>{preset.name}</span>
+                                                    <span className="text-muted-foreground text-xs">{preset.models?.length} members</span>
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-mono text-muted-foreground uppercase">Council Members (Debaters)</label>
+                                    <ModelSelector
+                                        mode="multiple"
+                                        value={councilMembers}
+                                        onValueChange={(val) => {
+                                            setCouncilMembers(val as CouncilMember[]);
+                                            if (selectedPresetId) setSelectedPresetId(null); // Switch to ad-hoc on change
+                                        }}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-mono text-muted-foreground uppercase">Judge (Synthesizer)</label>
+                                        <JudgeConfigDialog
+                                            judgePrompt={judgePrompt}
+                                            setJudgePrompt={setJudgePrompt}
+                                            isOpen={isJudgeConfigOpen}
+                                            onOpenChange={setIsJudgeConfigOpen}
+                                            defaultPrompt={defaultJudgePrompt}
+                                        />
+                                    </div>
+                                    <ModelSelector
+                                        mode="single"
+                                        value={judgeModel}
+                                        onValueChange={(val) => {
+                                            setJudgeModel(val as string);
+                                            if (selectedPresetId) setSelectedPresetId(null); // Switch to ad-hoc on change
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-border/50 flex justify-end">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs gap-2"
+                                    onClick={() => setIsSaveDialogOpen(true)}
+                                >
+                                    <Save className="w-3 h-3" />
+                                    Save Session as New Council
+                                </Button>
                                 <PresetSaveDialog
                                     isOpen={isSaveDialogOpen}
                                     onOpenChange={setIsSaveDialogOpen}
@@ -189,34 +255,8 @@ export function CouncilConfigPanel({
                                     onSave={onSavePreset}
                                 />
                             </div>
-
-                            <div className="space-y-2">
-                                <label className="text-xs font-mono text-muted-foreground uppercase">Council Members (Debaters)</label>
-                                <ModelSelector
-                                    mode="multiple"
-                                    value={councilMembers}
-                                    onValueChange={(val) => setCouncilMembers(val as CouncilMember[])}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-xs font-mono text-muted-foreground uppercase">Judge (Synthesizer)</label>
-                                    <JudgeConfigDialog
-                                        judgePrompt={judgePrompt}
-                                        setJudgePrompt={setJudgePrompt}
-                                        isOpen={isJudgeConfigOpen}
-                                        onOpenChange={setIsJudgeConfigOpen}
-                                        defaultPrompt={defaultJudgePrompt}
-                                    />
-                                </div>
-                                <ModelSelector
-                                    mode="single"
-                                    value={judgeModel}
-                                    onValueChange={(val) => setJudgeModel(val as string)}
-                                />
-                            </div>
-                        </div>
-                    )}
+                        </TabsContent>
+                    </Tabs>
                 </CollapsibleContent>
             </Collapsible>
         </div>

@@ -53,6 +53,8 @@ export const messages = sqliteTable("messages", {
   annotations: text("annotations", { mode: 'json' }), // JSON string for Council data
   prompt_tokens: integer("prompt_tokens"),
   completion_tokens: integer("completion_tokens"),
+  cost: real("cost"),
+  model: text("model"),
   created_at: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -65,5 +67,13 @@ export const councilResponses = sqliteTable("council_responses", {
   completion_tokens: integer("completion_tokens"),
   cost: real("cost"),
   duration_ms: integer("duration_ms"),
+  created_at: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const savedModels = sqliteTable("saved_models", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  user_id: text("user_id").references(() => profiles.id, { onDelete: 'cascade' }).notNull(),
+  model_id: text("model_id").notNull(),
+  name: text("name"), // Optional alias
   created_at: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

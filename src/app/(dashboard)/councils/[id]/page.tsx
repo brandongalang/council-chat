@@ -33,7 +33,7 @@ export default function EditCouncilPage(props: { params: Promise<{ id: string }>
       const res = await fetch(`/api/councils/${params.id}`);
       if (!res.ok) throw new Error('Failed to load');
       const data = await res.json();
-      
+
       setFormData({
         name: data.name,
         description: data.description || '',
@@ -64,30 +64,30 @@ export default function EditCouncilPage(props: { params: Promise<{ id: string }>
 
     setSaving(true);
     try {
-        // Note: We haven't implemented PUT /api/councils/[id] yet! 
-        // We need to implement it or this will 405.
-        // For this task, we might need to add the route first.
-        // But let's assume we will add it.
-        
-        const payload = {
-            ...formData,
-            models: formData.models.map(id => ({ modelId: id }))
-        };
+      // Note: We haven't implemented PUT /api/councils/[id] yet! 
+      // We need to implement it or this will 405.
+      // For this task, we might need to add the route first.
+      // But let's assume we will add it.
 
-        const res = await fetch(`/api/councils/${params.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
+      const payload = {
+        ...formData,
+        models: formData.models.map(id => ({ modelId: id }))
+      };
 
-        if (!res.ok) throw new Error('Failed to update');
+      const res = await fetch(`/api/councils/${params.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-        toast.success('Council updated');
-        router.refresh();
+      if (!res.ok) throw new Error('Failed to update');
+
+      toast.success('Council updated');
+      router.refresh();
     } catch (error) {
-        toast.error('Failed to update council');
+      toast.error('Failed to update council');
     } finally {
-        setSaving(false);
+      setSaving(false);
     }
   };
 
@@ -97,79 +97,79 @@ export default function EditCouncilPage(props: { params: Promise<{ id: string }>
     <div className="max-w-3xl mx-auto space-y-8 pb-12">
       <div className="space-y-1">
         <Button variant="link" asChild className="pl-0 text-muted-foreground font-mono text-xs">
-            <Link href="/councils"><ArrowLeft className="mr-2 h-3 w-3" /> BACK TO REGISTRY</Link>
+          <Link href="/councils"><ArrowLeft className="mr-2 h-3 w-3" /> BACK TO REGISTRY</Link>
         </Button>
         <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-sans font-medium tracking-tight text-primary">Edit Protocol: {formData.name}</h1>
-            <div className="font-mono text-xs text-muted-foreground bg-secondary/50 px-2 py-1 rounded-none">ID: {params.id.slice(0,8)}</div>
+          <h1 className="text-3xl font-sans font-medium tracking-tight text-primary">Edit Protocol: {formData.name}</h1>
+          <div className="font-mono text-xs text-muted-foreground bg-secondary px-2 py-1 rounded-none">ID: {params.id.slice(0, 8)}</div>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Same form fields as New Page - duplication for speed now, refactor later */}
-         <Card className="border-border rounded-none">
-            <CardHeader>
-                <CardTitle className="font-sans">Council Manifesto</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="name" className="font-mono text-xs uppercase">Designation</Label>
-                    <Input 
-                        id="name" 
-                        value={formData.name} 
-                        onChange={e => setFormData({...formData, name: e.target.value})}
-                        className="font-sans rounded-none"
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="description" className="font-mono text-xs uppercase">Mission Statement</Label>
-                    <Textarea 
-                        id="description" 
-                        value={formData.description}
-                        onChange={e => setFormData({...formData, description: e.target.value})}
-                        className="font-sans rounded-none min-h-[100px]"
-                    />
-                </div>
-            </CardContent>
+        <Card className="border-border rounded-none">
+          <CardHeader>
+            <CardTitle className="font-sans">Council Manifesto</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name" className="font-mono text-xs uppercase">Designation</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                className="font-sans rounded-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description" className="font-mono text-xs uppercase">Mission Statement</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                className="font-sans rounded-none min-h-[100px]"
+              />
+            </div>
+          </CardContent>
         </Card>
 
         <Card className="border-border rounded-none">
-            <CardHeader>
-                <CardTitle className="font-sans">Presiding Judge</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-2">
-                    <Label htmlFor="judge" className="font-mono text-xs uppercase">Judge Model</Label>
-                    <ModelSelector
-                        value={formData.judgeModel}
-                        onValueChange={(val) => setFormData({...formData, judgeModel: val as string})}
-                        mode="single"
-                    />
-                </div>
-            </CardContent>
+          <CardHeader>
+            <CardTitle className="font-sans">Presiding Judge</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label htmlFor="judge" className="font-mono text-xs uppercase">Judge Model</Label>
+              <ModelSelector
+                value={formData.judgeModel}
+                onValueChange={(val) => setFormData({ ...formData, judgeModel: val as string })}
+                mode="single"
+              />
+            </div>
+          </CardContent>
         </Card>
 
         <Card className="border-border rounded-none">
-            <CardHeader>
-                <CardTitle className="font-sans">Council Members</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-2">
-                    <Label className="font-mono text-xs uppercase">Selected Agents</Label>
-                    <ModelSelector
-                        value={formData.models}
-                        onValueChange={(val) => setFormData({...formData, models: val as string[]})}
-                        mode="multiple"
-                    />
-                </div>
-            </CardContent>
+          <CardHeader>
+            <CardTitle className="font-sans">Council Members</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label className="font-mono text-xs uppercase">Selected Agents</Label>
+              <ModelSelector
+                value={formData.models}
+                onValueChange={(val) => setFormData({ ...formData, models: val as string[] })}
+                mode="multiple"
+              />
+            </div>
+          </CardContent>
         </Card>
 
         <div className="flex justify-end pt-4">
-            <Button type="submit" disabled={saving} className="rounded-none w-full md:w-auto font-mono">
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                UPDATE CONFIGURATION
-            </Button>
+          <Button type="submit" disabled={saving} className="rounded-none w-full md:w-auto font-mono">
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            UPDATE CONFIGURATION
+          </Button>
         </div>
       </form>
     </div>

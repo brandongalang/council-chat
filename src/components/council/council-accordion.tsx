@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from "react"
-import { Bot, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import { Bot, Loader2, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react"
 import {
     Accordion,
     AccordionContent,
@@ -10,19 +10,40 @@ import {
 } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Button } from "@/components/ui/button"
 import { CouncilResponse } from "@/types/council"
 import { calculateCost } from "@/lib/pricing"
 import { useEffect, useState } from 'react';
 
 interface CouncilAccordionProps {
     responses: CouncilResponse[]
+    onRetry?: (modelId: string) => void
 }
 
-export function CouncilAccordion({ responses }: CouncilAccordionProps) {
+export function CouncilAccordion({ responses, onRetry }: CouncilAccordionProps) {
     // Auto-expand items that are streaming or just completed
     const [value, setValue] = useState<string[]>([]);
+    const [hasAutoCollapsed, setHasAutoCollapsed] = useState(false);
 
     useEffect(() => {
+        // Check if all responses are done (completed or error)
+        const allDone = responses.length > 0 && responses.every(r => r.status === 'completed' || r.status === 'error');
+
+        if (allDone) {
+            if (!hasAutoCollapsed) {
+                // Collapse all
+                setValue([]);
+                setHasAutoCollapsed(true);
+            }
+            return;
+        }
+
+        // If not all done, reset auto-collapsed flag if we start a new run (e.g. status goes back to loading/streaming)
+        // This handles re-runs or new generations
+        if (responses.some(r => r.status === 'loading' || r.status === 'streaming')) {
+            if (hasAutoCollapsed) setHasAutoCollapsed(false);
+        }
+
         // When responses update, check if we should expand any new ones
         // Strategy: Expand all that are not 'loading' (i.e., have started)
         // We also want to keep open ones that are already open unless explicitly closed?
@@ -44,7 +65,7 @@ export function CouncilAccordion({ responses }: CouncilAccordionProps) {
             });
         }, 0);
         return () => clearTimeout(t);
-    }, [responses]);
+    }, [responses, hasAutoCollapsed]);
 
     // Calculate total cost
     const totalCost = responses.reduce((acc, r) => {
@@ -52,8 +73,8 @@ export function CouncilAccordion({ responses }: CouncilAccordionProps) {
     }, 0);
 
     return (
-        <div className="w-full border rounded-md my-4 bg-background/50">
-            <div className="px-4 py-2 border-b bg-muted/30 text-xs font-mono uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+        <div className="w-full border rounded-md my-4 bg-card">
+            <div className="px-4 py-2 border-b bg-muted text-xs font-mono uppercase tracking-wider text-muted-foreground flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Bot className="w-3 h-3" />
                     Council Deliberation
@@ -67,7 +88,7 @@ export function CouncilAccordion({ responses }: CouncilAccordionProps) {
             <Accordion type="multiple" value={value} onValueChange={setValue} className="w-full">
                 {responses.map((response) => (
                     <AccordionItem key={response.modelId} value={response.modelId} className="border-b last:border-0">
-                        <AccordionTrigger className="px-4 py-2 hover:no-underline hover:bg-muted/20 text-sm group">
+                        <AccordionTrigger className="px-4 py-2 hover:no-underline hover:bg-accent text-sm group">
                             <div className="flex items-center justify-between w-full pr-2">
                                 <span className="font-medium font-serif flex items-center gap-2">
                                     {response.modelName}
@@ -79,10 +100,23 @@ export function CouncilAccordion({ responses }: CouncilAccordionProps) {
                                         </span>
                                     )}
                                     <StatusBadge status={response.status} />
+                                    {response.status === 'error' && onRetry && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6 ml-1 hover:bg-destructive/10 hover:text-destructive"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onRetry(response.modelId);
+                                            }}
+                                        >
+                                            <RefreshCw className="h-3 w-3" />
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         </AccordionTrigger>
-                        <AccordionContent className="px-4 py-3 bg-background/30">
+                        <AccordionContent className="px-4 py-3 bg-background">
                             <ScrollArea className="h-full max-h-[300px] w-full pr-4">
                                 <div className="font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
                                     {response.content || <span className="italic opacity-50">Waiting for output...</span>}
