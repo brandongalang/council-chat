@@ -42,37 +42,6 @@ export default function CouncilsPage() {
     }
   };
 
-  const handleCreateDefault = async () => {
-    if (!confirm('Initialize the default "Balanced Council"?')) return;
-    setLoading(true);
-    try {
-      const payload = {
-        name: 'Balanced Council',
-        description: 'A balanced mix of leading models for general-purpose queries.',
-        judgeModel: 'openai/gpt-4o',
-        models: [
-          { modelId: 'anthropic/claude-3.5-sonnet' },
-          { modelId: 'openai/gpt-4o' },
-          { modelId: 'google/gemini-pro-1.5' }
-        ]
-      };
-
-      const res = await fetch('/api/councils', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) throw new Error('Failed to create default');
-
-      toast.success('Balanced Council initialized');
-      fetchCouncils();
-    } catch (error) {
-      toast.error('Failed to initialize default council');
-      setLoading(false);
-    }
-  };
-
   const handleDelete = async (id: string) => {
     if (!confirm('Dissolve this council? This action cannot be undone.')) return;
 
@@ -113,17 +82,16 @@ export default function CouncilsPage() {
       {councils.length === 0 ? (
         <div className="text-center py-12 border border-dashed border-border bg-card">
           <Users className="mx-auto h-12 w-12 text-muted-foreground" />
-          <h3 className="mt-4 text-lg font-sans font-medium">No Councils Established</h3>
-          <p className="text-sm text-muted-foreground font-mono mt-2 mb-6">
-            Initialize a new council to begin deliberations.
+          <h3 className="mt-4 text-lg font-sans font-medium">No Saved Councils</h3>
+          <p className="text-sm text-muted-foreground font-mono mt-2 mb-6 max-w-md mx-auto">
+            You can save custom council configurations here for quick access.
+            <br />
+            Start a chat to experiment with different models and judge templates.
           </p>
           <div className="flex justify-center gap-4">
-            <Button onClick={handleCreateDefault} variant="outline" className="rounded-none font-mono text-xs">
-              Initialize Default Protocol
-            </Button>
             <Button asChild className="rounded-none font-mono text-xs">
-              <Link href="/councils/new">
-                Create Custom Council
+              <Link href="/chat">
+                Start New Chat
               </Link>
             </Button>
           </div>

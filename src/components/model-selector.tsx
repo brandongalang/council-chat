@@ -21,6 +21,8 @@ import { Badge } from "@/components/ui/badge"
 import { Edit2 } from "lucide-react"
 import { PersonaEditorDialog } from '@/components/chat/persona-editor-dialog';
 
+import { CouncilMember } from '@/types/council';
+
 export interface Model {
   id: string
   name: string
@@ -30,11 +32,6 @@ export interface Model {
     completion: number
   }
   context_length?: number
-}
-
-export interface CouncilMember {
-  modelId: string
-  persona?: string
 }
 
 interface ModelSelectorProps {

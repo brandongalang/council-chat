@@ -11,6 +11,14 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Edit2, Settings2 } from 'lucide-react'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
+import { SYNTHESIZER_PROMPTS } from "@/constants/council-prompts"
 
 interface JudgeConfigDialogProps {
     judgePrompt: string
@@ -47,6 +55,28 @@ export function JudgeConfigDialog({
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Template</Label>
+                        <Select onValueChange={(val) => {
+                            const template = SYNTHESIZER_PROMPTS.find(t => t.id === val);
+                            if (template) setJudgePrompt(template.systemPrompt);
+                        }}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select a template..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {SYNTHESIZER_PROMPTS.map((template) => (
+                                    <SelectItem key={template.id} value={template.id}>
+                                        <span className="font-medium">{template.name}</span>
+                                        <span className="ml-2 text-muted-foreground text-xs">
+                                            - {template.description}
+                                        </span>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
                     <div className="space-y-2">
                         <Label htmlFor="prompt">System Prompt</Label>
                         <Textarea

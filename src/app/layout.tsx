@@ -30,6 +30,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${fraunces.variable} ${jetbrainsMono.variable} antialiased font-mono bg-background text-foreground selection:bg-primary/20`}
+        suppressHydrationWarning
       >
         {children}
         <Toaster />

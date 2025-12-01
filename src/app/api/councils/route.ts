@@ -1,73 +1,69 @@
+import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { councils, councilModels } from '@/db/schema';
-import { desc, eq } from 'drizzle-orm';
-import { NextResponse } from 'next/server';
+import { eq } from 'drizzle-orm';
+
+const DEMO_USER_ID = 'demo-user';
 
 export async function GET() {
-  const userId = 'local-user';
+    try {
+        const userCouncils = await db.select().from(councils).where(eq(councils.user_id, DEMO_USER_ID));
 
-  try {
-    // Fetch councils with their models
-    const userCouncils = await db.query.councils.findMany({
-      where: eq(councils.user_id, userId),
-      orderBy: [desc(councils.updated_at)],
-      with: {
-        models: true
-      }
-    });
+        const results = await Promise.all(userCouncils.map(async (council) => {
+            const models = await db.select().from(councilModels).where(eq(councilModels.council_id, council.id));
+            return {
+                ...council,
+                models: models.map(m => ({
+                    model_id: m.model_id,
+                    prompt_template_id: m.prompt_template_id,
+                    system_prompt_override: m.system_prompt_override
+                }))
+            };
+        }));
 
-    return NextResponse.json(userCouncils);
-  } catch (err) {
-    console.error('Error fetching councils:', err);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-  }
+        return NextResponse.json(results);
+    } catch (error) {
+        console.error('Error fetching councils:', error);
+        return NextResponse.json({ error: 'Failed to fetch councils' }, { status: 500 });
+    }
 }
 
-export async function POST(req: Request) {
-  const userId = 'local-user';
+export async function POST(request: Request) {
+    try {
+        const body = await request.json();
+        const { name, description, judgeModel, judgePrompt, members } = body;
 
-  try {
-    const body = await req.json();
-    const { name, description, judgeModel, members, judgePrompt } = body;
+        const [newCouncil] = await db.insert(councils).values({
+            user_id: DEMO_USER_ID,
+            name,
+            description,
+            judge_model: judgeModel,
+            judge_settings: JSON.stringify({ systemPrompt: judgePrompt }),
+        }).returning();
 
-    if (!name || !members || !Array.isArray(members) || members.length === 0) {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-    }
-
-    // Transaction to insert council and its models
-    const result = await db.transaction(async (tx) => {
-      const [newCouncil] = await tx.insert(councils).values({
-        user_id: userId,
-        name,
-        description,
-        judge_model: judgeModel,
-        judge_settings: JSON.stringify({ systemPrompt: judgePrompt }),
-      }).returning();
-
-      if (!newCouncil) throw new Error('Failed to create council');
-
-      const modelValues = members.map((member: string | { modelId: string; persona?: string }) => {
-        if (typeof member === 'string') {
-          return {
-            council_id: newCouncil.id,
-            model_id: member,
-          };
+        if (members && members.length > 0) {
+            await db.insert(councilModels).values(
+                members.map((m: any) => ({
+                    council_id: newCouncil.id,
+                    model_id: m.modelId,
+                    prompt_template_id: m.promptTemplateId,
+                    system_prompt_override: m.customPrompt || m.persona // Support both new and legacy
+                }))
+            );
         }
-        return {
-          council_id: newCouncil.id,
-          model_id: member.modelId,
-          system_prompt_override: member.persona,
-        };
-      });
 
-      await tx.insert(councilModels).values(modelValues);
+        const models = await db.select().from(councilModels).where(eq(councilModels.council_id, newCouncil.id));
 
-      return newCouncil;
-    });
-
-    return NextResponse.json(result);
-  } catch (err) {
-    console.error('Error creating council:', err);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-  }
+        return NextResponse.json({
+            ...newCouncil,
+            models: models.map(m => ({
+                model_id: m.model_id,
+                prompt_template_id: m.prompt_template_id,
+                system_prompt_override: m.system_prompt_override
+            }))
+        });
+    } catch (error) {
+        console.error('Error creating council:', error);
+        return NextResponse.json({ error: 'Failed to create council' }, { status: 500 });
+    }
 }

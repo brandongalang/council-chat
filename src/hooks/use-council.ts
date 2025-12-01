@@ -1,7 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { UIMessage as Message } from '@ai-sdk/react';
 import { CouncilResponse } from '@/types/council';
-import { CouncilMember } from '@/components/model-selector';
+import { CouncilMember } from '@/types/council';
+import { fetchWithRetry, parseStreamResponse } from '@/lib/fetch-utils';
 
 export function useCouncil() {
     const [councilResponses, setCouncilResponses] = useState<CouncilResponse[]>([]);
@@ -11,121 +12,81 @@ export function useCouncil() {
     const lastMessagesRef = useRef<Message[]>([]);
     const lastMembersRef = useRef<CouncilMember[]>([]);
 
+    const updateResponse = useCallback((index: number, updates: Partial<CouncilResponse>) => {
+        setCouncilResponses(prev => {
+            const newResponses = [...prev];
+            if (newResponses[index]) {
+                newResponses[index] = { ...newResponses[index], ...updates };
+            }
+            return newResponses;
+        });
+    }, []);
+
     const generateSingleResponse = async (
         member: CouncilMember,
         messages: Message[],
-        index: number,
-        currentResponses: CouncilResponse[],
-        updateState: (responses: CouncilResponse[]) => void
+        index: number
     ) => {
-        let attempts = 0;
-        const maxRetries = 3;
-        let success = false;
-
-        // Clone array to avoid mutation issues
-        const responses = [...currentResponses];
-
-        while (attempts < maxRetries && !success) {
-            attempts++;
-            try {
+        try {
+            await fetchWithRetry(async () => {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        messages,
-                        model: member.modelId,
-                        persona: member.persona,
-                        save: false // Transient generation
-                    }),
-                    signal: controller.signal
-                });
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            messages,
+                            model: member.modelId,
+                            persona: member.persona,
+                            promptTemplateId: member.promptTemplateId,
+                            customPrompt: member.customPrompt,
+                            save: false // Transient generation
+                        }),
+                        signal: controller.signal
+                    });
 
-                clearTimeout(timeoutId);
+                    if (!response.ok || !response.body) throw new Error(`Failed with status ${response.status}`);
 
-                if (!response.ok || !response.body) throw new Error(`Failed with status ${response.status}`);
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
 
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
+                    updateResponse(index, { status: 'streaming', content: '' });
 
-                // Update status to streaming
-                responses[index] = { ...responses[index], status: 'streaming', content: '' };
-                updateState([...responses]);
+                    let fullContent = '';
 
-                let fullContent = '';
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        const chunk = decoder.decode(value, { stream: true });
+                        fullContent += chunk;
 
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    const chunk = decoder.decode(value, { stream: true });
-                    fullContent += chunk;
+                        const { content, usage } = parseStreamResponse(fullContent);
 
-                    // Check for usage data
-                    if (fullContent.includes('__USAGE__:')) {
-                        const parts = fullContent.split('__USAGE__:');
-                        const content = parts[0];
-                        const usageJson = parts[1];
-
-                        try {
-                            const usage = JSON.parse(usageJson);
-                            responses[index] = {
-                                ...responses[index],
-                                content: content,
+                        updateResponse(index, {
+                            content,
+                            ...(usage && {
                                 promptTokens: usage.promptTokens,
                                 completionTokens: usage.completionTokens
-                            };
-                        } catch (e) {
-                            console.error('Failed to parse usage:', e);
-                            // Fallback to just content if parsing fails
-                            responses[index] = { ...responses[index], content: content };
-                        }
-                    } else {
-                        responses[index] = { ...responses[index], content: fullContent };
+                            })
+                        });
                     }
 
-                    updateState([...responses]);
-                }
+                    updateResponse(index, { status: 'completed' });
 
-                // Final cleanup to ensure usage is processed if it came in the last chunk
-                if (fullContent.includes('__USAGE__:')) {
-                    const parts = fullContent.split('__USAGE__:');
-                    const content = parts[0];
-                    const usageJson = parts[1];
-                    try {
-                        const usage = JSON.parse(usageJson);
-                        responses[index] = {
-                            ...responses[index],
-                            content: content,
-                            promptTokens: usage.promptTokens,
-                            completionTokens: usage.completionTokens,
-                            status: 'completed'
-                        };
-                    } catch (e) {
-                        responses[index] = { ...responses[index], content: content, status: 'completed' };
-                    }
-                } else {
-                    responses[index] = { ...responses[index], status: 'completed' };
+                } finally {
+                    clearTimeout(timeoutId);
                 }
+            }, { maxRetries: 3 });
 
-                updateState([...responses]);
-                success = true;
-
-            } catch (err: any) {
-                console.error(`Attempt ${attempts} failed for ${member.modelId}:`, err);
-                if (attempts === maxRetries) {
-                    responses[index] = {
-                        ...responses[index],
-                        status: 'error',
-                        content: `Failed to generate response after ${maxRetries} attempts. Error: ${err.name === 'AbortError' ? 'Timeout' : err.message}`
-                    };
-                    updateState([...responses]);
-                } else {
-                    // Exponential backoff: 1s, 2s, 3s
-                    await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
-                }
-            }
+        } catch (err: unknown) {
+            console.error(`Failed to generate response for ${member.modelId}:`, err);
+            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+            updateResponse(index, {
+                status: 'error',
+                errorMessage: err instanceof Error && err.name === 'AbortError' ? 'Timeout' : errorMessage
+            });
         }
     };
 
@@ -146,46 +107,34 @@ export function useCouncil() {
             promptTokens: 0,
             completionTokens: 0
         }));
+
         setCouncilResponses(newResponses);
         onUpdate(newResponses);
 
         try {
             await Promise.all(members.map((member, index) =>
-                generateSingleResponse(member, messages, index, newResponses, (updated) => {
-                    setCouncilResponses(updated);
-                    onUpdate(updated);
-                })
+                generateSingleResponse(member, messages, index)
             ));
         } finally {
             setIsCouncilActive(false);
         }
 
-        return newResponses; // Note: This returns the initial array reference, not the final state. 
-        // The caller relies on onUpdate or the state.
+        return newResponses;
     };
 
-    const retryMember = async (modelId: string, onUpdate?: (responses: CouncilResponse[]) => void) => {
+    const retryMember = async (modelId: string) => {
         const index = councilResponses.findIndex(r => r.modelId === modelId);
         if (index === -1) return;
 
         const member = lastMembersRef.current.find(m => m.modelId === modelId);
         if (!member) return;
 
-        // Reset status to loading
-        const updatedResponses = [...councilResponses];
-        updatedResponses[index] = { ...updatedResponses[index], status: 'loading', content: '' };
-        setCouncilResponses(updatedResponses);
-        if (onUpdate) onUpdate(updatedResponses);
+        updateResponse(index, { status: 'loading', content: '', errorMessage: undefined });
 
         await generateSingleResponse(
             member,
             lastMessagesRef.current,
-            index,
-            updatedResponses,
-            (updated) => {
-                setCouncilResponses(updated);
-                if (onUpdate) onUpdate(updated);
-            }
+            index
         );
     };
 

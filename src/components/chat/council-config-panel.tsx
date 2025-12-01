@@ -14,13 +14,19 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Settings2, Menu, Edit2, User, Users, Save } from 'lucide-react'
-import { ModelSelector, CouncilMember } from '@/components/model-selector'
+import { ModelSelector } from '@/components/model-selector'
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { ChatSidebar } from '@/components/chat-sidebar'
 import { JudgeConfigDialog } from './judge-config-dialog'
 import { PresetSaveDialog } from './preset-save-dialog'
+import { useRouter, useSearchParams } from 'next/navigation';
+import { CouncilMemberRow } from './council-member-row';
+import { PromptSelector } from './prompt-selector';
+import { SYNTHESIZER_PROMPTS } from '@/constants/council-prompts';
+import { cn } from '@/lib/utils';
 import { ConversationStats } from './conversation-stats'
 import { UIMessage } from '@ai-sdk/react'
+import { CouncilMember } from '@/types/council';
 
 interface CouncilConfigPanelProps {
     mode: 'solo' | 'council'
@@ -204,18 +210,51 @@ export function CouncilConfigPanel({
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-mono text-muted-foreground uppercase">Council Members (Debaters)</label>
-                                    <ModelSelector
-                                        mode="multiple"
-                                        value={councilMembers}
-                                        onValueChange={(val) => {
-                                            setCouncilMembers(val as CouncilMember[]);
-                                            if (selectedPresetId) setSelectedPresetId(null); // Switch to ad-hoc on change
-                                        }}
-                                    />
+                                {/* Council Members Section */}
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-mono text-muted-foreground uppercase">Council Members</label>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                                setCouncilMembers([
+                                                    ...councilMembers,
+                                                    { modelId: 'openai/gpt-4o', promptTemplateId: 'vanilla' }
+                                                ]);
+                                                if (selectedPresetId) setSelectedPresetId(null);
+                                            }}
+                                            className="h-6 text-xs"
+                                        >
+                                            + Add Member
+                                        </Button>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        {councilMembers.map((member, idx) => (
+                                            <CouncilMemberRow
+                                                key={idx}
+                                                member={member}
+                                                index={idx}
+                                                onUpdate={(index, updates) => {
+                                                    const newMembers = [...councilMembers];
+                                                    newMembers[index] = { ...newMembers[index], ...updates };
+                                                    setCouncilMembers(newMembers);
+                                                    if (selectedPresetId) setSelectedPresetId(null);
+                                                }}
+                                                onRemove={(index) => {
+                                                    const newMembers = councilMembers.filter((_, i) => i !== index);
+                                                    setCouncilMembers(newMembers);
+                                                    if (selectedPresetId) setSelectedPresetId(null);
+                                                }}
+                                                showRemove={councilMembers.length > 1}
+                                            />
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
+
+                                {/* Judge Section */}
+                                <div className="space-y-3 pt-2 border-t">
                                     <div className="flex items-center justify-between">
                                         <label className="text-xs font-mono text-muted-foreground uppercase">Judge (Synthesizer)</label>
                                         <JudgeConfigDialog
@@ -226,14 +265,75 @@ export function CouncilConfigPanel({
                                             defaultPrompt={defaultJudgePrompt}
                                         />
                                     </div>
-                                    <ModelSelector
-                                        mode="single"
-                                        value={judgeModel}
-                                        onValueChange={(val) => {
-                                            setJudgeModel(val as string);
-                                            if (selectedPresetId) setSelectedPresetId(null); // Switch to ad-hoc on change
-                                        }}
-                                    />
+
+                                    <div className="space-y-2">
+                                        <ModelSelector
+                                            mode="single"
+                                            value={judgeModel}
+                                            onValueChange={(val) => {
+                                                setJudgeModel(val as string);
+                                                if (selectedPresetId) setSelectedPresetId(null);
+                                            }}
+                                        />
+
+                                        <div className="flex gap-2">
+                                            <div className="flex-1">
+                                                <PromptSelector
+                                                    value={SYNTHESIZER_PROMPTS.find(p => p.systemPrompt === judgePrompt)?.id}
+                                                    onValueChange={(val) => {
+                                                        const template = SYNTHESIZER_PROMPTS.find(p => p.id === val);
+                                                        if (template) {
+                                                            setJudgePrompt(template.systemPrompt);
+                                                        } else {
+                                                            setJudgePrompt('');
+                                                        }
+                                                        if (selectedPresetId) setSelectedPresetId(null);
+                                                    }}
+                                                    prompts={SYNTHESIZER_PROMPTS}
+                                                    placeholder="Select Strategy..."
+                                                    className="h-9"
+                                                />
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-9 w-9 shrink-0"
+                                                onClick={() => setIsJudgeConfigOpen(true)}
+                                                title="Edit Custom Prompt"
+                                            >
+                                                <span className="sr-only">Edit Prompt</span>
+                                                <span className="text-xs">✏️</span>
+                                            </Button>
+                                        </div>
+
+                                        {/* Quick Strategy Buttons */}
+                                        <div className="flex gap-1.5 flex-wrap">
+                                            {['creative_maximize', 'risk_assessment', 'action_oriented'].map(id => {
+                                                const template = SYNTHESIZER_PROMPTS.find(p => p.id === id);
+                                                if (!template) return null;
+                                                const isActive = judgePrompt === template.systemPrompt;
+
+                                                return (
+                                                    <Button
+                                                        key={id}
+                                                        variant={isActive ? "secondary" : "outline"}
+                                                        size="sm"
+                                                        className={cn(
+                                                            "h-7 text-[10px] px-2 gap-1",
+                                                            isActive && "bg-primary/10 hover:bg-primary/20 border-primary/20"
+                                                        )}
+                                                        onClick={() => {
+                                                            setJudgePrompt(template.systemPrompt);
+                                                            if (selectedPresetId) setSelectedPresetId(null);
+                                                        }}
+                                                    >
+                                                        <span>{template.icon}</span>
+                                                        <span>{template.name}</span>
+                                                    </Button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -245,7 +345,7 @@ export function CouncilConfigPanel({
                                     onClick={() => setIsSaveDialogOpen(true)}
                                 >
                                     <Save className="w-3 h-3" />
-                                    Save Session as New Council
+                                    Save as Preset
                                 </Button>
                                 <PresetSaveDialog
                                     isOpen={isSaveDialogOpen}

@@ -37,11 +37,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 const data = {
-  user: {
-    name: "Council Admin",
-    email: "admin@council.ai",
-    avatar: "/avatars/shadcn.jpg",
-  },
   navMain: [
     {
       title: "Sessions",
@@ -50,23 +45,16 @@ const data = {
       isActive: true,
     },
     {
-      title: "Councils",
-      url: "/councils",
-      icon: Users,
-    },
-    {
       title: "Analytics",
       url: "/dashboard",
       icon: PieChart,
     },
-
     {
       title: "Settings",
       url: "/settings",
       icon: Settings2,
     },
   ],
-
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -105,39 +93,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-border p-4">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground rounded-none hover:bg-sidebar-accent"
-                >
-                  <Avatar className="h-8 w-8 rounded-none border border-border">
-                    <AvatarImage src={data.user.avatar} alt={data.user.name} />
-                    <AvatarFallback className="rounded-none bg-secondary text-secondary-foreground font-mono">CA</AvatarFallback>
-                  </Avatar>
-                  <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-                    <span className="truncate font-semibold font-sans">{data.user.name}</span>
-                    <span className="truncate text-xs text-muted-foreground font-mono">{data.user.email}</span>
-                  </div>
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-none border-border bg-sidebar"
-                side="right"
-                align="end"
-                sideOffset={4}
-              >
-                <DropdownMenuItem className="rounded-none focus:bg-sidebar-accent">
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )

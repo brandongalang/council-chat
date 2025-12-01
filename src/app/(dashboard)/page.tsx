@@ -84,7 +84,7 @@ export default function Page() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="text-xs font-mono text-muted-foreground px-2 py-1 bg-secondary/50 rounded-none">
-                        Analyzing
+                      Analyzing
                     </div>
                     <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
                   </div>
@@ -103,7 +103,7 @@ export default function Page() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Button variant="secondary" className="w-full justify-between font-mono rounded-none h-12 hover:bg-background hover:text-foreground transition-colors">
-              New Council Session
+              New Chat Session
               <ArrowRight className="h-4 w-4" />
             </Button>
             <Button variant="outline" className="w-full justify-between font-mono rounded-none h-12 bg-transparent border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground hover:text-primary transition-colors">
@@ -111,9 +111,9 @@ export default function Page() {
               <Settings2 className="h-4 w-4" />
             </Button>
             <div className="mt-4 pt-4 border-t border-primary-foreground/10">
-                <p className="text-xs font-mono text-primary-foreground/60">
-                    System Note: All sessions are automatically archived for compliance.
-                </p>
+              <p className="text-xs font-mono text-primary-foreground/60">
+                System Note: All sessions are automatically archived for compliance.
+              </p>
             </div>
           </CardContent>
         </Card>

@@ -1,28 +1,32 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { streamText, convertToCoreMessages } from 'ai';
 import { db } from '@/db';
-import { userApiKeys, chats, messages as messagesTable, profiles, councilResponses } from '@/db/schema';
+import { userApiKeys, chats, messages as messagesTable, profiles } from '@/db/schema';
 import { decrypt } from '@/lib/encryption';
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { calculateCost } from '@/lib/pricing';
 
+import { AppConfig } from '@/config/app-config';
+import { COUNCIL_MEMBER_PROMPTS, SYNTHESIZER_PROMPTS } from '@/constants/council-prompts';
+import { DEFAULT_JUDGE_PROMPT } from '@/constants/council';
+
 export async function POST(req: Request) {
   // Local-only mode: Hardcoded user
-  const userId = 'local-user';
+  const userId = AppConfig.defaultUser.id;
 
   // Ensure local user profile exists
   const existingUser = await db.select().from(profiles).where(eq(profiles.id, userId)).get();
   if (!existingUser) {
     await db.insert(profiles).values({
       id: userId,
-      email: 'local@user.com',
-      full_name: 'Local User',
+      email: AppConfig.defaultUser.email,
+      full_name: AppConfig.defaultUser.name,
     });
   }
 
   try {
-    const { messages, model, councilContext, councilData, chatId: requestedChatId, judgePrompt, persona, save = true } = await req.json();
+    const { messages, model, councilContext, councilData, chatId: requestedChatId, judgePrompt, persona, promptTemplateId, customPrompt, save = true } = await req.json();
 
     // 1. Get API Key
     const keyRecord = await db.query.userApiKeys.findFirst({
@@ -92,34 +96,39 @@ ${r.content}
 Please analyze these responses and provide your synthesis.
 `;
 
+    // Prompt Resolution Logic
+    const resolveSystemPrompt = () => {
+      // Priority: customPrompt > promptTemplateId > persona (legacy)
+      if (customPrompt) return customPrompt;
+
+      if (promptTemplateId) {
+        // Check both libraries as we don't know context (member vs judge) strictly here
+        // though usually 'save=true' implies judge context
+        const memberTemplate = COUNCIL_MEMBER_PROMPTS.find(p => p.id === promptTemplateId);
+        if (memberTemplate) return memberTemplate.systemPrompt;
+
+        const synthTemplate = SYNTHESIZER_PROMPTS.find(p => p.id === promptTemplateId);
+        if (synthTemplate) return synthTemplate.systemPrompt;
+      }
+
+      return persona; // Fallback to legacy
+    };
+
     // If councilData is present, inject it into the last message content for the LLM only
     if (councilData && processedMessages.length > 0) {
       const lastMsg = processedMessages[processedMessages.length - 1];
       const originalContent = lastMsg.content;
 
-      systemPrompt = judgePrompt || `You are a synthesis expert. You will receive responses from multiple AI models to the same user query. Your task is to:
-
-1. Analyze each response for its unique strengths and weaknesses
-2. Compare responses to identify what each model does better or worse than others
-3. Synthesize the best elements into a comprehensive final response
-
-Format your response as:
-
-## Analysis
-[For each model, provide 2-3 bullet points on strengths and weaknesses]
-
-## Synthesis Approach
-[Explain which elements you're taking from which model and why]
-
-## Final Response
-[Your synthesized answer that incorporates the best of all responses]
-`;
+      // For Judge: Use judgePrompt if provided (legacy/direct), otherwise resolve
+      // Note: judgePrompt is passed as a string from frontend currently
+      systemPrompt = judgePrompt || resolveSystemPrompt() || DEFAULT_JUDGE_PROMPT;
 
       // Construct the full prompt for the Judge
       lastMsg.content = buildJudgeUserPrompt(originalContent, councilData);
 
-    } else if (persona) {
-      systemPrompt = persona;
+    } else {
+      // For Council Member or Solo
+      systemPrompt = resolveSystemPrompt();
     }
 
     const result = await streamText({
@@ -133,7 +142,7 @@ Format your response as:
           const completionTokens = (usage as any)?.completionTokens || 0;
           const cost = calculateCost(targetModel, promptTokens, completionTokens);
 
-          const [assistantMsg] = await db.insert(messagesTable).values({
+          await db.insert(messagesTable).values({
             chat_id: chatId,
             role: 'assistant',
             content: text,
@@ -142,24 +151,7 @@ Format your response as:
             completion_tokens: completionTokens,
             cost: cost,
             model: targetModel,
-          }).returning();
-
-          // Save Council Metrics if available
-          if (councilData && Array.isArray(councilData)) {
-            const councilInserts = councilData.map((c: any) => ({
-              message_id: assistantMsg.id,
-              model_id: c.modelId,
-              content: c.content,
-              prompt_tokens: c.promptTokens || 0,
-              completion_tokens: c.completionTokens || 0,
-              cost: calculateCost(c.modelId, c.promptTokens || 0, c.completionTokens || 0),
-              duration_ms: 0 // We aren't tracking duration yet in the API, maybe client sends it?
-            }));
-
-            if (councilInserts.length > 0) {
-              await db.insert(councilResponses).values(councilInserts);
-            }
-          }
+          });
         }
 
         // Log usage for debugging

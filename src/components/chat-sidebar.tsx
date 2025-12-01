@@ -43,7 +43,7 @@ export function ChatSidebar({ currentChatId, onSelectChat, onNewChat, className 
             <div className="p-4 border-b">
                 <Button onClick={onNewChat} className="w-full justify-start gap-2" variant="outline">
                     <Plus className="h-4 w-4" />
-                    New Council
+                    New Chat
                 </Button>
             </div>
             <ScrollArea className="flex-1">

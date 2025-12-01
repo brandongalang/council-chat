@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:default-council": "node scripts/seed-default-council.js"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.74",
@@ -26,8 +27,6 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@supabase/ssr": "^0.8.0",
-    "@supabase/supabase-js": "^2.86.0",
     "ai": "^5.0.104",
     "better-sqlite3": "^12.5.0",
     "class-variance-authority": "^0.7.1",
