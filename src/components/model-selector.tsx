@@ -181,8 +181,12 @@ export function ModelSelector({
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[400px] p-0 rounded-none bg-popover border-border" align="start">
-          <Command className="rounded-none bg-popover">
+        <PopoverContent 
+          className="w-[400px] p-0 rounded-none border-border" 
+          align="start"
+          style={{ backgroundColor: 'hsl(var(--popover))' }}
+        >
+          <Command className="rounded-none" style={{ backgroundColor: 'hsl(var(--popover))' }}>
             <CommandInput placeholder="Search models..." className="font-mono text-xs" />
             <CommandList>
               <CommandEmpty>
