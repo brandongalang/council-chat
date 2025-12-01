@@ -1,5 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { streamText, convertToCoreMessages } from 'ai';
+import { streamText } from 'ai';
 import { db } from '@/db';
 import { userApiKeys, chats, messages as messagesTable, profiles } from '@/db/schema';
 import { decrypt } from '@/lib/encryption';
@@ -28,6 +28,17 @@ export async function POST(req: Request) {
   try {
     const { messages, model, councilContext, councilData, chatId: requestedChatId, judgePrompt, persona, promptTemplateId, customPrompt, save = true } = await req.json();
 
+    // Validate messages array
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json({ error: 'Messages array is required and cannot be empty' }, { status: 400 });
+    }
+
+    // Helper to extract content from message (handles both old 'content' and new 'text' formats)
+    const getMessageContent = (msg: any): string => {
+      if (typeof msg === 'string') return msg;
+      return msg?.content || msg?.text || '';
+    };
+
     // 1. Get API Key
     const keyRecord = await db.query.userApiKeys.findFirst({
       where: (keys, { and, eq }) => and(eq(keys.user_id, userId), eq(keys.provider, 'openrouter'))
@@ -37,7 +48,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'OpenRouter API Key not configured. Please go to Settings.' }, { status: 400 });
     }
 
-    const apiKey = decrypt(keyRecord.encrypted_key);
+    let apiKey: string;
+    try {
+      apiKey = decrypt(keyRecord.encrypted_key);
+    } catch (error) {
+      console.error('Failed to decrypt API key:', error);
+      return NextResponse.json({ error: 'Failed to decrypt API key. Please reset it in Settings.' }, { status: 500 });
+    }
+
+    if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+      return NextResponse.json({ error: 'Invalid API key format. Please check Settings.' }, { status: 400 });
+    }
 
     // 2. Initialize OpenRouter Provider
     const openrouter = createOpenAI({
@@ -50,7 +71,8 @@ export async function POST(req: Request) {
     if (save) {
       if (!chatId) {
         // Create new chat
-        const title = messages[messages.length - 1].content.slice(0, 50) + '...';
+        const lastMsgContent = getMessageContent(messages[messages.length - 1]);
+        const title = lastMsgContent.slice(0, 50) + '...';
         const [newChat] = await db.insert(chats).values({
           user_id: userId,
           title: title,
@@ -71,13 +93,19 @@ export async function POST(req: Request) {
       await db.insert(messagesTable).values({
         chat_id: chatId,
         role: 'user',
-        content: lastUserMsg.content,
+        content: getMessageContent(lastUserMsg),
       });
     }
 
     // 5. Stream Text
     const targetModel = model || 'openai/gpt-4o';
-    const processedMessages = [...messages];
+
+    // Normalize messages to ensure they have role and content fields
+    const normalizedMessages = messages.map((msg: any) => ({
+      role: msg.role || 'user',
+      content: getMessageContent(msg)
+    }));
+
     let systemPrompt = undefined;
 
     // Helper to build the Judge's user prompt
@@ -115,8 +143,9 @@ Please analyze these responses and provide your synthesis.
     };
 
     // If councilData is present, inject it into the last message content for the LLM only
-    if (councilData && processedMessages.length > 0) {
-      const lastMsg = processedMessages[processedMessages.length - 1];
+    let messagesForLLM = normalizedMessages;
+    if (councilData && normalizedMessages.length > 0) {
+      const lastMsg = normalizedMessages[normalizedMessages.length - 1];
       const originalContent = lastMsg.content;
 
       // For Judge: Use judgePrompt if provided (legacy/direct), otherwise resolve
@@ -124,7 +153,13 @@ Please analyze these responses and provide your synthesis.
       systemPrompt = judgePrompt || resolveSystemPrompt() || DEFAULT_JUDGE_PROMPT;
 
       // Construct the full prompt for the Judge
-      lastMsg.content = buildJudgeUserPrompt(originalContent, councilData);
+      const judgePromptContent = buildJudgeUserPrompt(originalContent, councilData);
+
+      // Create a new message with the judge prompt (don't mutate normalized)
+      messagesForLLM = [
+        ...normalizedMessages.slice(0, -1),
+        { ...lastMsg, content: judgePromptContent }
+      ];
 
     } else {
       // For Council Member or Solo
@@ -133,7 +168,7 @@ Please analyze these responses and provide your synthesis.
 
     const result = await streamText({
       model: openrouter(targetModel),
-      messages: convertToCoreMessages(processedMessages),
+      messages: messagesForLLM,
       system: systemPrompt,
       onFinish: async ({ text, usage }) => {
         // Save the assistant's response to the database

@@ -4,7 +4,7 @@ import { useChat } from '@ai-sdk/react';
 import { CouncilAccordion } from '@/components/council/council-accordion';
 import { ChatList } from '@/components/chat/chat-list';
 import { ChatInput } from '@/components/chat/chat-input';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { CouncilMember, Preset } from '@/types/council';
 import { ChatSidebar } from '@/components/chat-sidebar';
 import { useCouncil } from '@/hooks/use-council';
@@ -54,7 +54,7 @@ export default function ChatInterface() {
 
     // AI SDK
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { messages, input, handleInputChange, handleSubmit: originalHandleSubmit, isLoading, stop, append, setMessages } = useChat({
+    const { messages, setMessages, sendMessage, stop, status } = useChat({
         api: '/api/chat',
         body: { chatId: currentChatId },
         onResponse: (response: Response) => {
@@ -68,6 +68,17 @@ export default function ChatInterface() {
             toast.error("Failed to send message: " + error.message);
         }
     } as any) as any;
+
+    // Derive loading state from status
+    const isLoading = status === 'streaming' || status === 'submitted';
+
+    // Use local state for input
+    const [localInput, setLocalInput] = useState('');
+    const input = localInput;
+    
+    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setLocalInput(e.target.value);
+    }, []);
 
     // Handlers
     const handleLoadPreset = (presetId: string) => {
@@ -116,12 +127,22 @@ export default function ChatInterface() {
             const res = await fetch(`/api/chats/${chatId}`);
             if (res.ok) {
                 const data = await res.json();
-                const loadedMessages = data.map((m: { id: string; role: 'system' | 'user' | 'assistant' | 'data'; content: string; annotations?: string }) => ({
-                    id: m.id,
-                    role: m.role,
-                    content: m.content,
-                    annotations: m.annotations ? JSON.parse(m.annotations) : undefined
-                }));
+                const loadedMessages = data.map((m: { id: string; role: 'system' | 'user' | 'assistant' | 'data'; content: string; annotations?: string }) => {
+                    let parsedAnnotations;
+                    if (m.annotations) {
+                        try {
+                            parsedAnnotations = JSON.parse(m.annotations);
+                        } catch {
+                            console.warn('Failed to parse annotations for message', m.id);
+                        }
+                    }
+                    return {
+                        id: m.id,
+                        role: m.role,
+                        content: m.content,
+                        annotations: parsedAnnotations
+                    };
+                });
                 setMessages(loadedMessages);
             }
         } catch (e) {
@@ -138,24 +159,22 @@ export default function ChatInterface() {
 
     const handleCouncilSubmit = async (e?: React.FormEvent) => {
         e?.preventDefault();
-        if (!input.trim() || isCouncilActive) return;
+        if (!input?.trim() || isCouncilActive) return;
 
         const userMessage = input;
 
         // SOLO MODE: Bypass Council Logic
         if (mode === 'solo') {
-            handleInputChange({ target: { value: '' } } as React.ChangeEvent<HTMLInputElement>);
-            await append({
-                role: 'user',
-                content: userMessage,
-            }, {
-                body: { model: soloModel, chatId: currentChatId }
-            });
+            setLocalInput('');
+            await sendMessage(
+                { text: userMessage },
+                { body: { model: soloModel, chatId: currentChatId } }
+            );
             return;
         }
 
         // Council Mode
-        handleInputChange({ target: { value: '' } } as React.ChangeEvent<HTMLInputElement>);
+        setLocalInput('');
         setTemporaryCouncilResponses([]);
 
         const history = messages.map((m: Message) => ({ role: m.role, content: m.content }));
@@ -168,14 +187,16 @@ export default function ChatInterface() {
             (responses) => setTemporaryCouncilResponses(responses)
         );
 
-        await append({
-            role: 'user',
-            content: userMessage,
-            data: {
-                councilData: councilResponses,
-                judgePrompt: judgePrompt
+        await sendMessage(
+            { text: userMessage },
+            { 
+                body: { 
+                    chatId: currentChatId,
+                    councilData: councilResponses,
+                    judgePrompt: judgePrompt
+                } 
             }
-        });
+        );
 
         setTemporaryCouncilResponses([]);
     };
