@@ -237,9 +237,10 @@ Format: Use clear headings or bullet points for the analysis if helpful, but kee
     // Custom submit handler for Council logic
     const handleCouncilSubmit = async (e?: React.FormEvent) => {
         e?.preventDefault();
-        if (!input.trim() || isCouncilActive) return;
+        const trimmedInput = (input ?? '').trim();
+        if (!trimmedInput || isCouncilActive) return;
 
-        const userMessage = input;
+        const userMessage = trimmedInput;
 
         // SOLO MODE: Bypass Council Logic
         if (mode === 'solo') {
@@ -253,7 +254,12 @@ Format: Use clear headings or bullet points for the analysis if helpful, but kee
             return;
         }
 
-        // COUNCIL MODE: Run Orchestrator
+        // COUNCIL MODE: Require minimum 2 members
+        if (councilMembers.length < 2) {
+            toast.error('Council mode requires at least 2 members. Please add more models.');
+            return;
+        }
+
         // Clear input immediately for UX
         handleInputChange({ target: { value: '' } } as any);
 
@@ -273,17 +279,20 @@ Format: Use clear headings or bullet points for the analysis if helpful, but kee
             (responses) => setTemporaryCouncilResponses(responses) // Real-time updates if we want to show them outside the chat list
         );
 
-        // 3. Prepare Context for Judge
-        const contextString = councilResponses.map(r => `[Agent: ${r.modelName}]\n${r.content}`).join('\n\n');
+        // Prepare Context for Judge - include model name labels
+        const contextString = councilResponses.map(r => `[Model: ${r.modelId}]\n${r.content}`).join('\n\n');
 
         // Trigger Judge (The actual Chat Item)
         await append({
             role: 'user',
-            content: `User Query: ${userMessage}\n\n--- COUNCIL DELIBERATIONS ---\n${contextString}`,
-            data: {
+            content: userMessage,
+        }, {
+            body: {
+                model: judgeModel,
+                chatId: currentChatId,
                 councilContext: contextString,
                 councilData: councilResponses,
-                judgePrompt: judgePrompt // Pass the custom prompt
+                judgePrompt: judgePrompt
             }
         });
 
