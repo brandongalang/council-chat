@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from "react"
-import { Check, ChevronsUpDown, X, Loader2 } from "lucide-react"
+import { Check, ChevronsUpDown, X, Loader2, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -53,12 +53,19 @@ export const POPULAR_MODELS: Model[] = [
 ]
 
 /**
- * Represents a member of a Council, including model ID and optional persona.
+ * Represents a member of a Council, including model ID, unique instance ID, and optional persona.
  */
 export interface CouncilMember {
+  /** Unique instance ID for this council member (allows same model multiple times) */
+  instanceId: string
+  /** The model ID (e.g. openai/gpt-4o) */
   modelId: string
+  /** Optional persona/system prompt for this member */
   persona?: string
 }
+
+/** Generate a unique instance ID */
+const generateInstanceId = () => `member-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
 /**
  * Props for the ModelSelector component.
@@ -77,6 +84,7 @@ interface ModelSelectorProps {
 /**
  * Component for selecting AI models from a list or entering a custom one.
  * Supports single and multiple selection modes, and persona editing for council members.
+ * In multiple mode, the same model can be added multiple times with different personas.
  *
  * @param props - The properties for the Model Selector.
  * @returns The rendered Model Selector component.
@@ -93,7 +101,7 @@ export function ModelSelector({
   const [isLoading, setIsLoading] = React.useState(false)
   const [hasFetched, setHasFetched] = React.useState(false)
 
-  // Persona Editing State
+  // Persona Editing State - now tracks by instanceId
   const [editingMember, setEditingMember] = React.useState<CouncilMember | null>(null)
   const [personaInput, setPersonaInput] = React.useState("")
 
@@ -111,7 +119,6 @@ export function ModelSelector({
         })
         .catch(err => {
           console.error('Failed to fetch models:', err)
-          // Keep using POPULAR_MODELS as fallback
         })
         .finally(() => setIsLoading(false))
     }
@@ -127,7 +134,6 @@ export function ModelSelector({
       }
       groups[provider].push(model)
     })
-    // Sort providers alphabetically, but put popular ones first
     const priorityProviders = ['openai', 'anthropic', 'google', 'meta-llama', 'mistralai']
     const sortedKeys = Object.keys(groups).sort((a, b) => {
       const aIndex = priorityProviders.indexOf(a.toLowerCase())
@@ -140,49 +146,54 @@ export function ModelSelector({
     return { groups, sortedKeys }
   }, [allModels])
 
-  // Normalize value to array of IDs for selection logic
-  const selectedIds = React.useMemo(() => {
+  // Normalize value to array of CouncilMembers
+  const members = React.useMemo((): CouncilMember[] => {
     if (!value) return []
     if (Array.isArray(value)) {
-      return (value as any[]).map(v => typeof v === 'string' ? v : v.modelId)
+      return (value as any[]).map(v => {
+        if (typeof v === 'string') {
+          return { instanceId: generateInstanceId(), modelId: v }
+        }
+        // Ensure instanceId exists
+        return v.instanceId ? v : { ...v, instanceId: generateInstanceId() }
+      })
     }
-    return [typeof value === 'string' ? value : (value as any).modelId]
+    if (typeof value === 'string') {
+      return [{ instanceId: generateInstanceId(), modelId: value }]
+    }
+    return []
   }, [value])
 
-  // Helper to get full member object if it exists
-  const getMember = (id: string): CouncilMember | undefined => {
-    if (Array.isArray(value)) {
-      return (value as any[]).find(v => (typeof v === 'string' ? v : v.modelId) === id)
-        ? (typeof (value as any[]).find(v => (typeof v === 'string' ? v : v.modelId) === id) === 'string'
-          ? { modelId: id }
-          : (value as any[]).find(v => v.modelId === id))
-        : undefined
-    }
-    return undefined
+  // Get member by instanceId
+  const getMemberByInstanceId = (instanceId: string): CouncilMember | undefined => {
+    return members.find(m => m.instanceId === instanceId)
   }
 
-  const handleSelect = (currentValue: string) => {
+  const handleSelect = (modelId: string) => {
     if (mode === 'single') {
-      onValueChange(currentValue === (value as string) ? "" : currentValue)
+      onValueChange(modelId === (value as string) ? "" : modelId)
       setOpen(false)
     } else {
-      // Multiple Mode Logic
-      const currentMembers = (value as any[]) || []
-      const exists = currentMembers.some(m => (typeof m === 'string' ? m : m.modelId) === currentValue)
-
-      let newMembers
-      if (exists) {
-        newMembers = currentMembers.filter(m => (typeof m === 'string' ? m : m.modelId) !== currentValue)
-      } else {
-        newMembers = [...currentMembers, { modelId: currentValue }]
+      // Multiple Mode: Always ADD a new member (allows duplicates)
+      const newMember: CouncilMember = {
+        instanceId: generateInstanceId(),
+        modelId: modelId,
       }
+      const currentMembers = Array.isArray(value) ? [...value as CouncilMember[]] : []
+      onValueChange([...currentMembers, newMember])
+    }
+  }
+
+  const handleRemoveMember = (instanceId: string) => {
+    if (mode === 'multiple' && Array.isArray(value)) {
+      const newMembers = (value as CouncilMember[]).filter(m => m.instanceId !== instanceId)
       onValueChange(newMembers)
     }
   }
 
-  const handleEditPersona = (memberId: string, e: React.MouseEvent) => {
+  const handleEditPersona = (instanceId: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    const member = getMember(memberId)
+    const member = getMemberByInstanceId(instanceId)
     if (member) {
       setEditingMember(member)
       setPersonaInput(member.persona || "")
@@ -190,13 +201,11 @@ export function ModelSelector({
   }
 
   const savePersona = () => {
-    if (!editingMember) return
+    if (!editingMember || !Array.isArray(value)) return
 
-    const currentMembers = (value as any[]) || []
-    const newMembers = currentMembers.map(m => {
-      const id = typeof m === 'string' ? m : m.modelId
-      if (id === editingMember.modelId) {
-        return { modelId: id, persona: personaInput }
+    const newMembers = (value as CouncilMember[]).map(m => {
+      if (m.instanceId === editingMember.instanceId) {
+        return { ...m, persona: personaInput }
       }
       return m
     })
@@ -211,7 +220,6 @@ export function ModelSelector({
   }
 
   const formatProviderName = (provider: string) => {
-    // Capitalize and format provider names nicely
     const nameMap: Record<string, string> = {
       'openai': 'OpenAI',
       'anthropic': 'Anthropic',
@@ -237,8 +245,8 @@ export function ModelSelector({
             className="w-full justify-between font-mono text-xs h-10 rounded-none"
           >
             {mode === 'single'
-              ? (selectedIds.length > 0 ? getModelName(selectedIds[0]) : "Select model...")
-              : (selectedIds.length > 0 ? `${selectedIds.length} models selected` : "Select models...")
+              ? (value ? getModelName(value as string) : "Select model...")
+              : (members.length > 0 ? `${members.length} model${members.length > 1 ? 's' : ''} in council` : "Add models to council...")
             }
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
@@ -299,12 +307,16 @@ export function ModelSelector({
                           onSelect={handleSelect}
                           className="font-mono text-xs"
                         >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4 flex-shrink-0",
-                              selectedIds.includes(model.id) ? "opacity-100" : "opacity-0"
-                            )}
-                          />
+                          {mode === 'single' ? (
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4 flex-shrink-0",
+                                value === model.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                          ) : (
+                            <Plus className="mr-2 h-4 w-4 flex-shrink-0 opacity-50" />
+                          )}
                           <span className="truncate">{model.name}</span>
                           <span className="ml-auto text-muted-foreground opacity-50 text-[10px] truncate max-w-[150px]">{model.id}</span>
                         </CommandItem>
@@ -318,24 +330,31 @@ export function ModelSelector({
         </PopoverContent>
       </Popover>
 
-      {/* Selected Tags Display for Multiple Mode */}
-      {mode === 'multiple' && selectedIds.length > 0 && (
+      {/* Selected Members Display for Multiple Mode */}
+      {mode === 'multiple' && members.length > 0 && (
         <div className="flex flex-wrap gap-2 pt-2">
-          {selectedIds.map(id => {
-            const model = allModels.find(m => m.id === id) || POPULAR_MODELS.find(m => m.id === id);
-            const member = getMember(id);
-            const hasPersona = member?.persona && member.persona.trim().length > 0;
+          {members.map((member, index) => {
+            const model = allModels.find(m => m.id === member.modelId) || POPULAR_MODELS.find(m => m.id === member.modelId);
+            const hasPersona = member.persona && member.persona.trim().length > 0;
 
             return (
-              <Badge key={id} variant="secondary" className={cn("rounded-none font-mono font-normal text-xs pr-1 pl-2 py-1 flex items-center gap-1", hasPersona && "border-primary/50 bg-primary/5")}>
-                <span>{model ? model.name : id}</span>
+              <Badge 
+                key={member.instanceId} 
+                variant="secondary" 
+                className={cn(
+                  "rounded-none font-mono font-normal text-xs pr-1 pl-2 py-1 flex items-center gap-1",
+                  hasPersona && "border-primary/50 bg-primary/5"
+                )}
+              >
+                <span className="text-muted-foreground text-[10px] mr-1">#{index + 1}</span>
+                <span>{model ? model.name : member.modelId}</span>
                 {hasPersona && <span className="text-[9px] text-primary ml-1 font-bold" title={member.persona}>(P)</span>}
 
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-4 w-4 ml-1 hover:bg-transparent text-muted-foreground hover:text-foreground"
-                  onClick={(e) => handleEditPersona(id, e)}
+                  onClick={(e) => handleEditPersona(member.instanceId, e)}
                   title="Edit Persona"
                 >
                   <Edit2 className="h-3 w-3" />
@@ -345,7 +364,8 @@ export function ModelSelector({
                   variant="ghost"
                   size="icon"
                   className="h-4 w-4 ml-1 hover:bg-transparent text-muted-foreground hover:text-foreground"
-                  onClick={() => handleSelect(id)}
+                  onClick={() => handleRemoveMember(member.instanceId)}
+                  title="Remove from council"
                 >
                   <X className="h-3 w-3" />
                 </Button>
