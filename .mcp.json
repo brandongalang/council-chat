@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "filesystem-with-morph": {
+      "command": "npx",
+      "args": ["-y", "@morphllm/morphmcp"],
+      "env": {
+        "MORPH_API_KEY": "sk-yGFr8vUB8LUCAisYGZtJ6eBvgo8Frry8Vhl4O7HwaamssXDi"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { streamText, convertToCoreMessages } from 'ai';
+import { streamText } from 'ai';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { userApiKeys, chats, messages as messagesTable } from '@/db/schema';
@@ -18,6 +18,17 @@ export async function POST(req: Request) {
   try {
     const { messages, model, councilContext, councilData, chatId: requestedChatId, judgePrompt, persona } = await req.json();
 
+    // Validate messages array
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json({ error: 'Messages array is required and cannot be empty' }, { status: 400 });
+    }
+
+    // Helper to extract content from message (handles both old 'content' and new 'text' formats)
+    const getMessageContent = (msg: any): string => {
+      if (typeof msg === 'string') return msg;
+      return msg?.content || msg?.text || '';
+    };
+
     // 1. Get API Key
     const keyRecord = await db.query.userApiKeys.findFirst({
       where: (keys, { and, eq }) => and(eq(keys.user_id, user.id), eq(keys.provider, 'openrouter'))
@@ -27,7 +38,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'OpenRouter API Key not configured. Please go to Settings.' }, { status: 400 });
     }
 
-    const apiKey = decrypt(keyRecord.encrypted_key);
+    let apiKey: string;
+    try {
+      apiKey = decrypt(keyRecord.encrypted_key);
+    } catch (error) {
+      console.error('Failed to decrypt API key:', error);
+      return NextResponse.json({ error: 'Failed to decrypt API key. Please reset it in Settings.' }, { status: 500 });
+    }
+
+    if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+      return NextResponse.json({ error: 'Invalid API key format. Please check Settings.' }, { status: 400 });
+    }
 
     // 2. Initialize OpenRouter Provider
     const openrouter = createOpenAI({
@@ -39,7 +60,8 @@ export async function POST(req: Request) {
     let chatId = requestedChatId;
     if (!chatId) {
       // Create new chat
-      const title = messages[messages.length - 1].content.slice(0, 50) + '...';
+      const lastMsgContent = getMessageContent(messages[messages.length - 1]);
+      const title = lastMsgContent.slice(0, 50) + '...';
       const [newChat] = await db.insert(chats).values({
         user_id: user.id,
         title: title,
@@ -60,17 +82,24 @@ export async function POST(req: Request) {
     await db.insert(messagesTable).values({
       chat_id: chatId,
       role: 'user',
-      content: lastUserMsg.content,
+      content: getMessageContent(lastUserMsg),
     });
 
     // 5. Stream Text
     const targetModel = model || 'openai/gpt-4o';
-    const processedMessages = [...messages];
+
+    // Normalize messages to ensure they have role and content fields
+    const normalizedMessages = messages.map((msg: any) => ({
+      role: msg.role || 'user',
+      content: getMessageContent(msg)
+    }));
+
     let systemPrompt = undefined;
 
     // If councilContext is present, inject it into the last message content for the LLM only
-    if (councilContext && processedMessages.length > 0) {
-      const lastMsg = processedMessages[processedMessages.length - 1];
+    let messagesForLLM = normalizedMessages;
+    if (councilContext && normalizedMessages.length > 0) {
+      const lastMsg = normalizedMessages[normalizedMessages.length - 1];
       const originalContent = lastMsg.content;
 
       systemPrompt = judgePrompt || `You are the Chief Justice of an AI Council.Your role is to synthesize the perspectives provided above into a single, authoritative response.
@@ -82,17 +111,22 @@ export async function POST(req: Request) {
 Tone: Diplomatic but decisive.Acknowledge nuance, but do not equivocate.
   Format: Use clear headings or bullet points for the analysis if helpful, but keep the final answer direct.`;
 
-      lastMsg.content = `User Query: ${originalContent}
+      // Create new message array to avoid mutation
+      const injectedContent = `User Query: ${originalContent}
 
 --- COUNCIL DELIBERATIONS-- -
   ${councilContext} `;
+      messagesForLLM = [
+        ...normalizedMessages.slice(0, -1),
+        { ...lastMsg, content: injectedContent }
+      ];
     } else if (persona) {
       systemPrompt = persona;
     }
 
     const result = await streamText({
       model: openrouter(targetModel),
-      messages: convertToCoreMessages(processedMessages),
+      messages: messagesForLLM,
       system: systemPrompt,
       onFinish: async ({ text, usage }) => {
         // Save the assistant's response to the database
