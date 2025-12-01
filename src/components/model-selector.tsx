@@ -164,6 +164,21 @@ export function ModelSelector({
     return []
   }, [value])
 
+  // Sync normalized members with instanceIds back to parent
+  // This ensures the parent always has stable instanceIds for removal/editing
+  React.useEffect(() => {
+    if (mode !== 'multiple' || !Array.isArray(value)) return
+    
+    // Check if any member is missing instanceId
+    const needsNormalization = (value as any[]).some(v => 
+      typeof v === 'string' || !v.instanceId
+    )
+    
+    if (needsNormalization && members.length > 0) {
+      onValueChange(members)
+    }
+  }, [mode, value, members, onValueChange])
+
   // Get member by instanceId
   const getMemberByInstanceId = (instanceId: string): CouncilMember | undefined => {
     return members.find(m => m.instanceId === instanceId)
