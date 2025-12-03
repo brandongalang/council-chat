@@ -36,6 +36,10 @@ yarn-error.log*
 # auto-generated encryption key (local-only security)
 .encryption-key
 
+# agent instruction files (personal config)
+AGENTS.md
+CLAUDE.md
+
 # vercel
 .vercel
 
