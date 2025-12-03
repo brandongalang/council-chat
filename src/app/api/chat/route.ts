@@ -1,4 +1,4 @@
-import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { streamText } from 'ai';
 import { db } from '@/db';
 import { chats, messages as messagesTable } from '@/db/schema';
@@ -19,13 +19,8 @@ type RawMessage =
     };
 
 type NormalizedMessage = {
-  role: string;
+  role: 'user' | 'assistant' | 'system';
   content: string;
-};
-
-type StreamUsage = {
-  promptTokens?: number;
-  completionTokens?: number;
 };
 
 // XML format instructions that are always appended to synthesizer prompts
@@ -72,8 +67,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Initialize OpenRouter Provider
-    const openrouter = createOpenAI({
-      baseURL: 'https://openrouter.ai/api/v1',
+    const openrouter = createOpenRouter({
       apiKey: apiKey,
     });
 
@@ -117,11 +111,11 @@ export async function POST(req: Request) {
     const rawMessages = messages as RawMessage[];
 
     const normalizeMessage = (msg: RawMessage): NormalizedMessage => ({
-      role: typeof msg === 'object' && msg?.role ? msg.role : 'user',
+      role: (typeof msg === 'object' && msg?.role ? msg.role : 'user') as NormalizedMessage['role'],
       content: getMessageContent(msg),
     });
 
-    const modelMessages = rawMessages
+    let modelMessages = rawMessages
       .map(normalizeMessage)
       .filter((msg) => msg.content && msg.content.trim() !== '');
 
@@ -158,10 +152,10 @@ ${councilContext}`;
     }
 
     const result = await streamText({
-      model: openrouter(targetModel),
+      model: openrouter(targetModel, { usage: { include: true } }),
       messages: modelMessages,
       system: systemPrompt,
-      onFinish: async ({ text, usage }) => {
+      onFinish: async ({ text, usage, providerMetadata }) => {
         // Save the assistant's response to the database
         if (chatId) {
           // Build annotations array with council data and judge model if present
@@ -170,8 +164,18 @@ ${councilContext}`;
             annotationsToSave = JSON.stringify([councilData, { judgeModel: targetModel }]);
           }
 
-          const promptTokens = (usage as StreamUsage | undefined)?.promptTokens ?? 0;
-          const completionTokens = (usage as StreamUsage | undefined)?.completionTokens ?? 0;
+          // Extract usage from standard usage object or OpenRouter provider metadata
+          const openrouterUsage = providerMetadata?.openrouter?.usage as { promptTokens?: number; completionTokens?: number; cost?: number } | undefined;
+          const promptTokens = usage?.inputTokens ?? openrouterUsage?.promptTokens ?? 0;
+          const completionTokens = usage?.outputTokens ?? openrouterUsage?.completionTokens ?? 0;
+          
+          // Use OpenRouter's reported cost if available, otherwise calculate
+          const cost = openrouterUsage?.cost ?? calculateModelCost(
+            targetModel,
+            promptTokens,
+            completionTokens,
+            INITIAL_PRICING
+          );
 
           await db.insert(messagesTable).values({
             chat_id: chatId,
@@ -180,12 +184,7 @@ ${councilContext}`;
             annotations: annotationsToSave,
             prompt_tokens: promptTokens,
             completion_tokens: completionTokens,
-            cost: calculateModelCost(
-              targetModel,
-              promptTokens,
-              completionTokens,
-              INITIAL_PRICING
-            ).toFixed(10),
+            cost: cost.toFixed(10),
             model: targetModel,
           });
         }
