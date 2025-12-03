@@ -1,21 +1,44 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 /** Encryption algorithm used (AES-256-GCM). */
 const ALGORITHM = 'aes-256-gcm';
 /** Length of the initialization vector in bytes. */
 const IV_LENGTH = 16;
+/** Path to store the auto-generated encryption key */
+const KEY_FILE_PATH = path.join(process.cwd(), '.encryption-key');
 
 /**
- * Derives a 32-byte key from the ENCRYPTION_KEY environment variable using scrypt.
+ * Gets or creates an encryption key.
+ * For local-only usage, auto-generates a key if none exists.
+ *
+ * @returns The encryption key as a hex string.
+ */
+function getOrCreateEncryptionKey(): string {
+  // First check environment variable (for advanced users or CI)
+  if (process.env.ENCRYPTION_KEY) {
+    return process.env.ENCRYPTION_KEY;
+  }
+
+  // Check if key file exists
+  if (fs.existsSync(KEY_FILE_PATH)) {
+    return fs.readFileSync(KEY_FILE_PATH, 'utf8').trim();
+  }
+
+  // Generate new key and save it
+  const newKey = crypto.randomBytes(32).toString('hex');
+  fs.writeFileSync(KEY_FILE_PATH, newKey, { mode: 0o600 }); // Read/write only for owner
+  return newKey;
+}
+
+/**
+ * Derives a 32-byte key from the encryption key using scrypt.
  *
  * @returns A 32-byte Buffer key.
- * @throws {Error} If ENCRYPTION_KEY is not defined.
  */
 function getKey() {
-  const secret = process.env.ENCRYPTION_KEY;
-  if (!secret) {
-    throw new Error('ENCRYPTION_KEY is not defined');
-  }
+  const secret = getOrCreateEncryptionKey();
   // Ensure key is 32 bytes for aes-256
   return crypto.scryptSync(secret, 'salt', 32);
 }

@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files
 .env*
+
+# auto-generated encryption key (local-only security)
+.encryption-key
 
 # vercel
 .vercel
