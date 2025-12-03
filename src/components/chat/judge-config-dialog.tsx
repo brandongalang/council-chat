@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Edit2, Settings2 } from 'lucide-react'
+import { Edit2 } from 'lucide-react'
 
 interface JudgeConfigDialogProps {
     judgePrompt: string

@@ -4,16 +4,40 @@ import { desc, eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { AppConfig } from '@/config/app-config';
 
+const normalizeMembers = (raw: unknown): Array<{ modelId: string; persona?: string }> => {
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map((member) => {
+      if (typeof member === 'string') {
+        return { modelId: member };
+      }
+      if (member && typeof member === 'object' && 'modelId' in member) {
+        const modelId = (member as { modelId?: unknown }).modelId;
+        if (typeof modelId === 'string' && modelId.trim().length > 0) {
+          const persona = (member as { persona?: unknown }).persona;
+          return {
+            modelId,
+            persona: typeof persona === 'string' && persona.length > 0 ? persona : undefined,
+          };
+        }
+      }
+      return null;
+    })
+    .filter((value): value is { modelId: string; persona?: string } => value !== null);
+};
+
 export async function GET() {
   const userId = AppConfig.defaultUser.id;
 
   try {
-    // Fetch councils with their models
+    // Fetch councils with their models and judge prompt metadata
     const userCouncils = await db.query.councils.findMany({
       where: eq(councils.user_id, userId),
       orderBy: [desc(councils.updated_at)],
       with: {
-        models: true
+        models: true,
+        judgePrompt: true,
       }
     });
 
@@ -29,9 +53,10 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { name, description, judgeModel, members, judgePrompt } = body;
+    const { name, judgeModel, judgePrompt, judgePromptId } = body;
+    const members = normalizeMembers(body.members ?? body.models);
 
-    if (!name || !members || !Array.isArray(members) || members.length === 0) {
+    if (!name || !judgeModel || members.length === 0) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
@@ -40,26 +65,21 @@ export async function POST(req: Request) {
       const [newCouncil] = await tx.insert(councils).values({
         user_id: userId,
         name,
-        description,
+        description: body.description ?? null,
         judge_model: judgeModel,
-        judge_settings: JSON.stringify({ systemPrompt: judgePrompt }),
+        judge_prompt_id: judgePromptId || null,
+        judge_settings: judgePrompt
+          ? JSON.stringify({ systemPrompt: judgePrompt })
+          : JSON.stringify({}),
       }).returning();
 
       if (!newCouncil) throw new Error('Failed to create council');
 
-      const modelValues = members.map((member: string | { modelId: string; persona?: string }) => {
-        if (typeof member === 'string') {
-          return {
-            council_id: newCouncil.id,
-            model_id: member,
-          };
-        }
-        return {
-          council_id: newCouncil.id,
-          model_id: member.modelId,
-          system_prompt_override: member.persona,
-        };
-      });
+      const modelValues = members.map((member) => ({
+        council_id: newCouncil.id,
+        model_id: member.modelId,
+        system_prompt_override: member.persona,
+      }));
 
       await tx.insert(councilModels).values(modelValues);
 

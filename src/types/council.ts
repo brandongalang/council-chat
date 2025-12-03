@@ -4,7 +4,11 @@ export type CouncilMemberStatus = 'idle' | 'loading' | 'streaming' | 'completed'
 /**
  * Represents a response from a single council member.
  */
+import { UsageMetrics } from './usage';
+
 export interface CouncilResponse {
+  /** Unique instance ID for this council member (allows same model multiple times) */
+  instanceId: string;
   /** The identifier of the model that generated the response. */
   modelId: string;
   /** Display name of the model. */
@@ -15,6 +19,8 @@ export interface CouncilResponse {
   content: string;
   /** Optional custom avatar URL for the model. */
   avatar?: string; // Optional custom avatar
+  /** Token usage metrics */
+  usage?: UsageMetrics;
 }
 
 /**

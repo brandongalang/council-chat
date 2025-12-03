@@ -1,39 +1,54 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { streamText } from 'ai';
 import { db } from '@/db';
-import { userApiKeys, chats, messages as messagesTable, profiles } from '@/db/schema';
+import { chats, messages as messagesTable } from '@/db/schema';
 import { decrypt } from '@/lib/encryption';
-import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
-import { AppConfig } from '@/config/app-config';
+import { calculateModelCost, INITIAL_PRICING } from '@/lib/model-pricing';
+import { getMessageContent } from '@/lib/message-utils';
+import { DEFAULT_JUDGE_PROMPT } from '@/config/prompts';
+import { ensureDefaultUser } from '@/lib/api-utils';
+
+type RawMessage =
+  | string
+  | {
+      role?: string;
+      content?: string;
+      text?: string;
+      parts?: Array<{ type?: string; text?: string | null } | null>;
+    };
+
+type NormalizedMessage = {
+  role: string;
+  content: string;
+};
+
+type StreamUsage = {
+  promptTokens?: number;
+  completionTokens?: number;
+};
+
+// XML format instructions that are always appended to synthesizer prompts
+const XML_FORMAT_INSTRUCTIONS = `You MUST structure your response in exactly two sections:
+
+<reasoning>
+Your analysis of the council members' responses, identifying agreements, disagreements, and key insights.
+</reasoning>
+
+<answer>
+Your synthesized final answer based on the council discussion.
+</answer>`;
 
 export async function POST(req: Request) {
-  // Local-only mode: Hardcoded user
-  const userId = AppConfig.defaultUser.id;
-
-  // Ensure local user profile exists
-  const existingUser = await db.select().from(profiles).where(eq(profiles.id, userId)).get();
-  if (!existingUser) {
-    await db.insert(profiles).values({
-      id: userId,
-      email: AppConfig.defaultUser.email,
-      full_name: AppConfig.defaultUser.name,
-    });
-  }
+  const userId = await ensureDefaultUser();
 
   try {
-    const { messages, model, councilContext, councilData, chatId: requestedChatId, judgePrompt, persona } = await req.json();
+    const { messages, model, councilContext, councilData, chatId: requestedChatId, judgePrompt, persona, isCouncilMember, isJudge } = await req.json();
 
     // Validate messages array
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages array is required and cannot be empty' }, { status: 400 });
     }
-
-    // Helper to extract content from message (handles both old 'content' and new 'text' formats)
-    const getMessageContent = (msg: any): string => {
-      if (typeof msg === 'string') return msg;
-      return msg?.content || msg?.text || '';
-    };
 
     // 1. Get API Key
     const keyRecord = await db.query.userApiKeys.findFirst({
@@ -63,9 +78,10 @@ export async function POST(req: Request) {
     });
 
     // 3. Handle Chat Session
+    // Skip chat creation for council member requests (they don't need to save separately)
     let chatId = requestedChatId;
-    if (!chatId) {
-      // Create new chat
+    if (!chatId && !isCouncilMember) {
+      // Create new chat only for main chat requests (not council members)
       const lastMsgContent = getMessageContent(messages[messages.length - 1]);
       const title = lastMsgContent.slice(0, 50) + '...';
       const [newChat] = await db.insert(chats).values({
@@ -73,8 +89,8 @@ export async function POST(req: Request) {
         title: title,
       }).returning();
       chatId = newChat.id;
-    } else {
-      // Verify ownership
+    } else if (chatId) {
+      // Verify ownership only if chatId is provided
       const chat = await db.query.chats.findFirst({
         where: (c, { and, eq }) => and(eq(c.id, chatId), eq(c.user_id, userId))
       });
@@ -83,67 +99,94 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. Save User Message
-    const lastUserMsg = messages[messages.length - 1];
-    await db.insert(messagesTable).values({
-      chat_id: chatId,
-      role: 'user',
-      content: getMessageContent(lastUserMsg),
-    });
+    // 4. Save User Message (only for non-council member requests)
+    if (!isCouncilMember && chatId) {
+      const lastUserMsg = messages[messages.length - 1];
+      await db.insert(messagesTable).values({
+        chat_id: chatId,
+        role: 'user',
+        content: getMessageContent(lastUserMsg),
+      });
+    }
 
     // 5. Stream Text
     const targetModel = model || 'openai/gpt-4o';
 
-    // Normalize messages to ensure they have role and content fields
-    const normalizedMessages = messages.map((msg: any) => ({
-      role: msg.role || 'user',
-      content: getMessageContent(msg)
-    }));
+    // For judge requests, messages are already properly formatted as {role, content} strings
+    // For other requests, detect format and convert appropriately
+    const rawMessages = messages as RawMessage[];
+
+    const normalizeMessage = (msg: RawMessage): NormalizedMessage => ({
+      role: typeof msg === 'object' && msg?.role ? msg.role : 'user',
+      content: getMessageContent(msg),
+    });
+
+    const modelMessages = rawMessages
+      .map(normalizeMessage)
+      .filter((msg) => msg.content && msg.content.trim() !== '');
+
+    const shouldUseJudgePrompt = Boolean(isJudge || councilContext);
+    const baseJudgePrompt = shouldUseJudgePrompt
+      ? (judgePrompt || DEFAULT_JUDGE_PROMPT)
+      : null;
+    const judgeSystemPrompt = baseJudgePrompt
+      ? `${baseJudgePrompt.trim()}\n\n${XML_FORMAT_INSTRUCTIONS}`
+      : undefined;
 
     let systemPrompt = undefined;
 
     // If councilContext is present, inject it into the last message content for the LLM only
-    let messagesForLLM = normalizedMessages;
-    if (councilContext && normalizedMessages.length > 0) {
-      const lastMsg = normalizedMessages[normalizedMessages.length - 1];
+    if (councilContext && modelMessages.length > 0) {
+      const lastMsg = modelMessages[modelMessages.length - 1];
       const originalContent = lastMsg.content;
 
-      systemPrompt = judgePrompt || `You are the Chief Justice of an AI Council.Your role is to synthesize the perspectives provided above into a single, authoritative response.
+      systemPrompt = judgeSystemPrompt;
 
-1. ** Analyze:** Briefly evaluate the strengths and weaknesses of each Council Member's argument.
-2. ** Synthesize:** Merge the best insights from all members.
-3. ** Decide:** Provide a final answer to the User's Query.
-
-Tone: Diplomatic but decisive.Acknowledge nuance, but do not equivocate.
-  Format: Use clear headings or bullet points for the analysis if helpful, but keep the final answer direct.`;
-
-      // Create new message array to avoid mutation
+      // Create new message array with injected council context
       const injectedContent = `User Query: ${originalContent}
 
---- COUNCIL DELIBERATIONS-- -
-  ${councilContext} `;
-      messagesForLLM = [
-        ...normalizedMessages.slice(0, -1),
+--- COUNCIL DELIBERATIONS ---
+${councilContext}`;
+      modelMessages = [
+        ...modelMessages.slice(0, -1),
         { ...lastMsg, content: injectedContent }
       ];
+    } else if (isJudge && judgeSystemPrompt) {
+      systemPrompt = judgeSystemPrompt;
     } else if (persona) {
       systemPrompt = persona;
     }
 
     const result = await streamText({
       model: openrouter(targetModel),
-      messages: messagesForLLM,
+      messages: modelMessages,
       system: systemPrompt,
       onFinish: async ({ text, usage }) => {
         // Save the assistant's response to the database
         if (chatId) {
+          // Build annotations array with council data and judge model if present
+          let annotationsToSave = null;
+          if (councilData) {
+            annotationsToSave = JSON.stringify([councilData, { judgeModel: targetModel }]);
+          }
+
+          const promptTokens = (usage as StreamUsage | undefined)?.promptTokens ?? 0;
+          const completionTokens = (usage as StreamUsage | undefined)?.completionTokens ?? 0;
+
           await db.insert(messagesTable).values({
             chat_id: chatId,
             role: 'assistant',
             content: text,
-            annotations: councilData ? JSON.stringify(councilData) : null,
-            prompt_tokens: (usage as any)?.promptTokens || 0,
-            completion_tokens: (usage as any)?.completionTokens || 0,
+            annotations: annotationsToSave,
+            prompt_tokens: promptTokens,
+            completion_tokens: completionTokens,
+            cost: calculateModelCost(
+              targetModel,
+              promptTokens,
+              completionTokens,
+              INITIAL_PRICING
+            ).toFixed(10),
+            model: targetModel,
           });
         }
 
@@ -154,8 +197,18 @@ Tone: Diplomatic but decisive.Acknowledge nuance, but do not equivocate.
       },
     });
 
-    const response = result.toTextStreamResponse();
-    response.headers.set('X-Chat-Id', chatId);
+    // Use toTextStreamResponse for council members and judge (easier to parse)
+    // Use toUIMessageStreamResponse for main chat (required for useChat hook)
+    if (isCouncilMember || isJudge) {
+      const response = result.toTextStreamResponse();
+      // Council members and judge don't need X-Chat-Id header
+      return response;
+    }
+
+    const response = result.toUIMessageStreamResponse();
+    if (chatId) {
+      response.headers.set('X-Chat-Id', chatId);
+    }
     return response;
 
   } catch (err) {

@@ -1,16 +1,35 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { ModelSelector } from '@/components/model-selector';
+import { CouncilMember, ModelSelector } from '@/components/model-selector';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+interface CouncilModelRecord {
+  id: string;
+  model_id: string;
+  system_prompt_override?: string | null;
+}
+
+interface CouncilDetail {
+  name: string;
+  judge_model?: string | null;
+  judge_prompt_id?: string | null;
+  models: CouncilModelRecord[];
+}
 
 export default function EditCouncilPage(props: { params: Promise<{ id: string }> }) {
   const params = use(props.params);
@@ -19,59 +38,75 @@ export default function EditCouncilPage(props: { params: Promise<{ id: string }>
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
     judgeModel: '',
-    models: [] as string[],
+    judgePromptId: '',
+    members: [] as CouncilMember[],
   });
+  const [judgePrompts, setJudgePrompts] = useState<Array<{ id: string; name: string }>>([]);
+  const [promptsLoading, setPromptsLoading] = useState(true);
 
-  useEffect(() => {
-    fetchCouncil();
-  }, []);
-
-  const fetchCouncil = async () => {
+  const fetchCouncil = useCallback(async () => {
     try {
       const res = await fetch(`/api/councils/${params.id}`);
       if (!res.ok) throw new Error('Failed to load');
-      const data = await res.json();
-      
+      const data = await res.json() as CouncilDetail;
+      const members: CouncilMember[] = data.models.map((m, index) => ({
+        instanceId: `${m.model_id}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+        modelId: m.model_id,
+        persona: m.system_prompt_override || undefined,
+      }));
+
       setFormData({
         name: data.name,
-        description: data.description || '',
         judgeModel: data.judge_model || '',
-        models: data.models.map((m: any) => m.model_id),
+        judgePromptId: data.judge_prompt_id || '',
+        members,
       });
     } catch (error) {
+      console.error('Failed to load council details', error);
       toast.error('Failed to load council details');
       router.push('/councils');
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id, router]);
 
-  const handleModelToggle = (modelId: string) => {
-    setFormData(prev => {
-      const models = prev.models.includes(modelId)
-        ? prev.models.filter(id => id !== modelId)
-        : [...prev.models, modelId];
-      return { ...prev, models };
-    });
-  };
+  useEffect(() => {
+    fetchCouncil();
+  }, [fetchCouncil]);
+
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      try {
+        const res = await fetch('/api/prompts?type=judge');
+        if (res.ok) {
+          const data = await res.json();
+          setJudgePrompts(data);
+        }
+      } catch (error) {
+        console.error('Failed to load judge prompts', error);
+      } finally {
+        setPromptsLoading(false);
+      }
+    };
+    fetchPrompts();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name) return toast.error("Name required");
-    if (formData.models.length === 0) return toast.error("Select members");
+    if (formData.members.length === 0) return toast.error("Select members");
 
     setSaving(true);
     try {
-        // Note: We haven't implemented PUT /api/councils/[id] yet! 
-        // We need to implement it or this will 405.
-        // For this task, we might need to add the route first.
-        // But let's assume we will add it.
-        
         const payload = {
-            ...formData,
-            models: formData.models.map(id => ({ modelId: id }))
+            name: formData.name,
+            judgeModel: formData.judgeModel,
+            judgePromptId: formData.judgePromptId || null,
+            members: formData.members.map(member => ({
+                modelId: member.modelId,
+                persona: member.persona
+            }))
         };
 
         const res = await fetch(`/api/councils/${params.id}`, {
@@ -85,6 +120,7 @@ export default function EditCouncilPage(props: { params: Promise<{ id: string }>
         toast.success('Council updated');
         router.refresh();
     } catch (error) {
+        console.error('Failed to update council', error);
         toast.error('Failed to update council');
     } finally {
         setSaving(false);
@@ -106,8 +142,7 @@ export default function EditCouncilPage(props: { params: Promise<{ id: string }>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Same form fields as New Page - duplication for speed now, refactor later */}
-         <Card className="border-border rounded-none">
+        <Card className="border-border rounded-none">
             <CardHeader>
                 <CardTitle className="font-sans">Council Manifesto</CardTitle>
             </CardHeader>
@@ -121,15 +156,6 @@ export default function EditCouncilPage(props: { params: Promise<{ id: string }>
                         className="font-sans rounded-none"
                     />
                 </div>
-                <div className="space-y-2">
-                    <Label htmlFor="description" className="font-mono text-xs uppercase">Mission Statement</Label>
-                    <Textarea 
-                        id="description" 
-                        value={formData.description}
-                        onChange={e => setFormData({...formData, description: e.target.value})}
-                        className="font-sans rounded-none min-h-[100px]"
-                    />
-                </div>
             </CardContent>
         </Card>
 
@@ -138,13 +164,40 @@ export default function EditCouncilPage(props: { params: Promise<{ id: string }>
                 <CardTitle className="font-sans">Presiding Judge</CardTitle>
             </CardHeader>
             <CardContent>
-                <div className="space-y-2">
-                    <Label htmlFor="judge" className="font-mono text-xs uppercase">Judge Model</Label>
-                    <ModelSelector
-                        value={formData.judgeModel}
-                        onValueChange={(val) => setFormData({...formData, judgeModel: val as string})}
-                        mode="single"
-                    />
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="judge" className="font-mono text-xs uppercase">Judge Model</Label>
+                        <ModelSelector
+                            value={formData.judgeModel}
+                            onValueChange={(val) => setFormData({...formData, judgeModel: val as string})}
+                            mode="single"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="font-mono text-xs uppercase">Judge Prompt</Label>
+                        <Select
+                            value={formData.judgePromptId}
+                            onValueChange={(value) => setFormData({ ...formData, judgePromptId: value })}
+                            disabled={promptsLoading || judgePrompts.length === 0}
+                        >
+                            <SelectTrigger className="rounded-none font-mono text-xs h-10">
+                                <SelectValue placeholder={promptsLoading ? "Loading prompts..." : "No prompt (default)"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="">No prompt (use default)</SelectItem>
+                                {judgePrompts.map((prompt) => (
+                                    <SelectItem key={prompt.id} value={prompt.id}>
+                                        {prompt.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {judgePrompts.length === 0 && !promptsLoading && (
+                            <p className="text-[11px] text-muted-foreground font-mono">
+                                Create judge prompts under /prompts to customize synthesis behavior.
+                            </p>
+                        )}
+                    </div>
                 </div>
             </CardContent>
         </Card>
@@ -157,8 +210,8 @@ export default function EditCouncilPage(props: { params: Promise<{ id: string }>
                 <div className="space-y-2">
                     <Label className="font-mono text-xs uppercase">Selected Agents</Label>
                     <ModelSelector
-                        value={formData.models}
-                        onValueChange={(val) => setFormData({...formData, models: val as string[]})}
+                        value={formData.members}
+                        onValueChange={(val) => setFormData({...formData, members: val as CouncilMember[]})}
                         mode="multiple"
                     />
                 </div>

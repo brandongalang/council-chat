@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -12,20 +12,20 @@ import { Eye, EyeOff } from 'lucide-react'
  *
  * @returns The BYOK Input component.
  */
-export function ByokInput() {
-  const [key, setKey] = useState('')
-  const [isVisible, setIsVisible] = useState(false)
-  const [saved, setSaved] = useState(false)
+const getStoredKey = () => {
+  if (typeof window === 'undefined') return ''
+  return localStorage.getItem('openai_api_key') ?? ''
+}
 
-  useEffect(() => {
-    const stored = localStorage.getItem('openai_api_key')
-    if (stored) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setKey(stored)
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSaved(true)
-    }
-  }, [])
+const getIsSaved = () => {
+  if (typeof window === 'undefined') return false
+  return Boolean(localStorage.getItem('openai_api_key'))
+}
+
+export function ByokInput() {
+  const [key, setKey] = useState(getStoredKey)
+  const [isVisible, setIsVisible] = useState(false)
+  const [saved, setSaved] = useState(getIsSaved)
 
   const handleSave = () => {
     if (!key.trim()) {

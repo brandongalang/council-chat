@@ -11,7 +11,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from "@/components/ui/command"
 import {
   Popover,
@@ -20,9 +19,8 @@ import {
 } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { Edit2 } from "lucide-react"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
 import { PersonaEditorDialog } from '@/components/chat/persona-editor-dialog';
+import { toast } from "sonner"
 
 /**
  * Definition of a Model interface.
@@ -34,6 +32,8 @@ export interface Model {
   name: string
   /** Provider of the model (e.g. OpenAI). */
   provider: string
+  /** Context window size in tokens. */
+  context_length?: number
 }
 
 /**
@@ -70,11 +70,13 @@ const generateInstanceId = () => `member-${Date.now()}-${Math.random().toString(
 /**
  * Props for the ModelSelector component.
  */
+type SelectorValue = string | string[] | CouncilMember[];
+
 interface ModelSelectorProps {
   /** The currently selected value(s). Can be a string, array of strings, or array of CouncilMembers. */
-  value?: string | string[] | CouncilMember[]
+  value?: SelectorValue
   /** Callback triggered when selection changes. */
-  onValueChange: (value: any) => void
+  onValueChange: (value: SelectorValue) => void
   /** Selection mode: 'single' or 'multiple'. */
   mode?: 'single' | 'multiple'
   /** Optional class name for styling. */
@@ -113,7 +115,14 @@ export function ModelSelector({
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
-            setAllModels(data)
+            // Deduplicate models by ID to avoid React key warnings
+            const uniqueModels = data.reduce((acc: Model[], model: Model) => {
+              if (!acc.some(m => m.id === model.id)) {
+                acc.push(model)
+              }
+              return acc
+            }, [])
+            setAllModels(uniqueModels)
           }
           setHasFetched(true)
         })
@@ -150,12 +159,11 @@ export function ModelSelector({
   const members = React.useMemo((): CouncilMember[] => {
     if (!value) return []
     if (Array.isArray(value)) {
-      return (value as any[]).map(v => {
-        if (typeof v === 'string') {
-          return { instanceId: generateInstanceId(), modelId: v }
+      return value.map(entry => {
+        if (typeof entry === 'string') {
+          return { instanceId: generateInstanceId(), modelId: entry }
         }
-        // Ensure instanceId exists
-        return v.instanceId ? v : { ...v, instanceId: generateInstanceId() }
+        return entry.instanceId ? entry : { ...entry, instanceId: generateInstanceId() }
       })
     }
     if (typeof value === 'string') {
@@ -168,12 +176,12 @@ export function ModelSelector({
   // This ensures the parent always has stable instanceIds for removal/editing
   React.useEffect(() => {
     if (mode !== 'multiple' || !Array.isArray(value)) return
-    
+
     // Check if any member is missing instanceId
-    const needsNormalization = (value as any[]).some(v => 
-      typeof v === 'string' || !v.instanceId
+    const needsNormalization = value.some(entry =>
+      typeof entry === 'string' || !('instanceId' in entry && entry.instanceId)
     )
-    
+
     if (needsNormalization && members.length > 0) {
       onValueChange(members)
     }
@@ -186,7 +194,8 @@ export function ModelSelector({
 
   const handleSelect = (modelId: string) => {
     if (mode === 'single') {
-      onValueChange(modelId === (value as string) ? "" : modelId)
+      const currentValue = typeof value === 'string' ? value : ''
+      onValueChange(currentValue === modelId ? "" : modelId)
       setOpen(false)
     } else {
       // Multiple Mode: Always ADD a new member (allows duplicates)
@@ -194,14 +203,18 @@ export function ModelSelector({
         instanceId: generateInstanceId(),
         modelId: modelId,
       }
-      const currentMembers = Array.isArray(value) ? [...value as CouncilMember[]] : []
-      onValueChange([...currentMembers, newMember])
+      onValueChange([...members, newMember])
     }
   }
 
   const handleRemoveMember = (instanceId: string) => {
     if (mode === 'multiple' && Array.isArray(value)) {
-      const newMembers = (value as CouncilMember[]).filter(m => m.instanceId !== instanceId)
+      // Enforce minimum 1 model
+      if (members.length <= 1) {
+        toast.error("At least 1 model is required")
+        return
+      }
+      const newMembers = members.filter(m => m.instanceId !== instanceId)
       onValueChange(newMembers)
     }
   }
@@ -218,7 +231,7 @@ export function ModelSelector({
   const savePersona = () => {
     if (!editingMember || !Array.isArray(value)) return
 
-    const newMembers = (value as CouncilMember[]).map(m => {
+    const newMembers = members.map(m => {
       if (m.instanceId === editingMember.instanceId) {
         return { ...m, persona: personaInput }
       }
@@ -260,14 +273,14 @@ export function ModelSelector({
             className="w-full justify-between font-mono text-xs h-10 rounded-none"
           >
             {mode === 'single'
-              ? (value ? getModelName(value as string) : "Select model...")
+              ? (typeof value === 'string' && value ? getModelName(value) : "Select model...")
               : (members.length > 0 ? `${members.length} model${members.length > 1 ? 's' : ''} in council` : "Add models to council...")
             }
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent 
-          className="w-[400px] p-0 rounded-none border-border" 
+        <PopoverContent
+          className="w-[400px] p-0 rounded-none border-border"
           align="start"
           style={{ backgroundColor: 'hsl(var(--popover))' }}
         >
@@ -353,11 +366,12 @@ export function ModelSelector({
           {members.map((member, index) => {
             const model = allModels.find(m => m.id === member.modelId) || POPULAR_MODELS.find(m => m.id === member.modelId);
             const hasPersona = member.persona && member.persona.trim().length > 0;
+            const isLastMember = members.length === 1;
 
             return (
-              <Badge 
-                key={member.instanceId} 
-                variant="secondary" 
+              <Badge
+                key={member.instanceId}
+                variant="secondary"
                 className={cn(
                   "rounded-none font-mono font-normal text-xs pr-1 pl-2 py-1 flex items-center gap-1",
                   hasPersona && "border-primary/50 bg-primary/5"
@@ -380,9 +394,15 @@ export function ModelSelector({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-4 w-4 ml-1 hover:bg-transparent text-muted-foreground hover:text-foreground"
+                  className={cn(
+                    "h-4 w-4 ml-1 hover:bg-transparent",
+                    isLastMember
+                      ? "text-muted-foreground/30 cursor-not-allowed"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
                   onClick={() => handleRemoveMember(member.instanceId)}
-                  title="Remove from council"
+                  disabled={isLastMember}
+                  title={isLastMember ? "At least 1 model required" : "Remove from council"}
                 >
                   <X className="h-3 w-3" />
                 </Button>

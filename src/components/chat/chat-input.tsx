@@ -65,7 +65,7 @@ export function ChatInput({ input, handleInputChange, handleSubmit, isLoading, s
             <Button
               type="submit"
               size="icon"
-              disabled={input === ''}
+              disabled={!input.trim()}
               className="h-8 w-8 rounded-none bg-primary hover:bg-primary/90 text-primary-foreground transition-all disabled:opacity-50"
             >
               <Send className="h-4 w-4" />
@@ -74,11 +74,6 @@ export function ChatInput({ input, handleInputChange, handleSubmit, isLoading, s
           )}
         </div>
       </form>
-      <div className="text-center mt-2">
-        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-          Encrypted Channel / Council Protocol Active
-        </p>
-      </div>
     </div>
   );
 }

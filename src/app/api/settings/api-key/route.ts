@@ -1,22 +1,12 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { userApiKeys, profiles } from '@/db/schema';
+import { userApiKeys } from '@/db/schema';
 import { encrypt } from '@/lib/encryption';
 import { eq } from 'drizzle-orm';
-import { AppConfig } from '@/config/app-config';
+import { ensureDefaultUser } from '@/lib/api-utils';
 
 export async function POST(request: Request) {
-  const userId = AppConfig.defaultUser.id;
-
-  // Ensure local user profile exists
-  const existingUser = await db.select().from(profiles).where(eq(profiles.id, userId)).get();
-  if (!existingUser) {
-    await db.insert(profiles).values({
-      id: userId,
-      email: AppConfig.defaultUser.email,
-      full_name: AppConfig.defaultUser.name,
-    });
-  }
+  const userId = await ensureDefaultUser();
 
   const body = await request.json();
   const { apiKey } = body;
@@ -53,8 +43,8 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET(request: Request) {
-    const userId = AppConfig.defaultUser.id;
+export async function GET() {
+    const userId = await ensureDefaultUser();
 
     try {
         const keyRecord = await db.query.userApiKeys.findFirst({
@@ -68,8 +58,8 @@ export async function GET(request: Request) {
     }
 }
 
-export async function DELETE(request: Request) {
-    const userId = AppConfig.defaultUser.id;
+export async function DELETE() {
+    const userId = await ensureDefaultUser();
 
     try {
         await db.delete(userApiKeys)
