@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,15 +14,11 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    checkKeyStatus();
-  }, []);
-
-  const checkKeyStatus = async () => {
+  const checkKeyStatus = useCallback(async () => {
     try {
       const res = await fetch('/api/settings/api-key');
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json() as { hasKey: boolean };
         setHasKey(data.hasKey);
       }
     } catch (error) {
@@ -30,7 +26,11 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    checkKeyStatus();
+  }, [checkKeyStatus]);
 
   const handleSave = async () => {
     if (!apiKey.trim()) return;
@@ -49,6 +49,7 @@ export default function SettingsPage() {
       setApiKey('');
       toast.success('API key saved securely');
     } catch (error) {
+      console.error('Failed to save API key', error);
       toast.error('Failed to save API key');
     } finally {
       setSaving(false);
@@ -69,6 +70,7 @@ export default function SettingsPage() {
       setHasKey(false);
       toast.success('API key removed');
     } catch (error) {
+      console.error('Failed to remove API key', error);
       toast.error('Failed to remove API key');
     } finally {
       setSaving(false);
@@ -88,6 +90,7 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      {/* API Key Card */}
       <Card className="border-border">
         <CardHeader>
           <CardTitle className="font-sans">OpenRouter API Key</CardTitle>

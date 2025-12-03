@@ -1,46 +1,56 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Users, MoreHorizontal, Trash2, Edit, Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Users, Edit, Loader2, X, Gavel } from 'lucide-react';
 import Link from 'next/link';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { toast } from 'sonner';
 
 interface Council {
   id: string;
   name: string;
-  description: string | null;
+  judge_model: string | null;
+  judgePrompt?: { id: string; name: string } | null;
+  models: Array<{ id: string; model_id: string }>;
   created_at: string;
 }
+
+const getModelShortName = (modelId?: string | null) => {
+  if (!modelId) return 'Unassigned';
+  const parts = modelId.split('/');
+  return parts[parts.length - 1] || modelId;
+};
+
+const formatMembers = (models: Council['models']) => {
+  if (!models?.length) return 'No members configured';
+  return models
+    .map((m) => getModelShortName(m.model_id))
+    .join(', ');
+};
 
 export default function CouncilsPage() {
   const [councils, setCouncils] = useState<Council[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchCouncils();
-  }, []);
-
-  const fetchCouncils = async () => {
+  const fetchCouncils = useCallback(async () => {
     try {
       const res = await fetch('/api/councils');
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json() as Council[];
         setCouncils(data);
       }
     } catch (error) {
-      console.error(error);
+      console.error('Failed to load councils', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchCouncils();
+  }, [fetchCouncils]);
 
   const handleCreateDefault = async () => {
     if (!confirm('Initialize the default "Balanced Council"?')) return;
@@ -48,9 +58,8 @@ export default function CouncilsPage() {
     try {
         const payload = {
             name: 'Balanced Council',
-            description: 'A balanced mix of leading models for general-purpose queries.',
             judgeModel: 'openai/gpt-4o',
-            models: [
+            members: [
                 { modelId: 'anthropic/claude-3.5-sonnet' },
                 { modelId: 'openai/gpt-4o' },
                 { modelId: 'google/gemini-pro-1.5' }
@@ -68,6 +77,7 @@ export default function CouncilsPage() {
         toast.success('Balanced Council initialized');
         fetchCouncils();
     } catch (error) {
+        console.error('Failed to initialize default council', error);
         toast.error('Failed to initialize default council');
         setLoading(false);
     }
@@ -79,12 +89,13 @@ export default function CouncilsPage() {
     try {
       const res = await fetch(`/api/councils/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setCouncils(councils.filter(c => c.id !== id));
+        setCouncils(prev => prev.filter(c => c.id !== id));
         toast.success('Council dissolved.');
       } else {
         throw new Error('Failed to delete');
       }
-    } catch (err) {
+    } catch (error) {
+      console.error('Failed to dissolve council', error);
       toast.error('Failed to dissolve council.');
     }
   };
@@ -139,26 +150,53 @@ export default function CouncilsPage() {
                         ID: {council.id.slice(0, 8)}
                     </CardDescription>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="h-8 w-8 p-0 rounded-none">
-                      <span className="sr-only">Open menu</span>
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="rounded-none">
-                    <DropdownMenuItem asChild className="rounded-none font-mono text-xs cursor-pointer">
-                        <Link href={`/councils/${council.id}`}>View Details</Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleDelete(council.id)} className="rounded-none font-mono text-xs text-destructive focus:text-destructive cursor-pointer">
-                        Dissolve Council
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" className="h-7 w-7 rounded-none" asChild>
+                    <Link href={`/councils/${council.id}`}>
+                      <Edit className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="sr-only">Edit Council</span>
+                    </Link>
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 rounded-none text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDelete(council.id)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    <span className="sr-only">Remove Council</span>
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-sm text-muted-foreground line-clamp-3 font-serif italic">
-                  {council.description || "No manifesto provided."}
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-start gap-3">
+                    <Gavel className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <div>
+                      <div className="font-mono text-[11px] uppercase text-muted-foreground tracking-wide">
+                        Presiding Judge
+                      </div>
+                      <div className="font-sans text-base">
+                        {getModelShortName(council.judge_model)}
+                      </div>
+                      {council.judgePrompt && (
+                        <Badge variant="outline" className="mt-1 text-[10px] font-mono uppercase">
+                          Prompt: {council.judgePrompt.name}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Users className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <div>
+                      <div className="font-mono text-[11px] uppercase text-muted-foreground tracking-wide">
+                        Members
+                      </div>
+                      <div className="font-sans text-sm text-muted-foreground">
+                        {formatMembers(council.models)}
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
                     <div className="text-xs font-mono text-muted-foreground">

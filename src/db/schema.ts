@@ -37,6 +37,31 @@ export const userApiKeys = sqliteTable("user_api_keys", {
 });
 
 /**
+ * Table schema for reusable prompts.
+ * Prompts can be used across multiple councils for judges or members.
+ */
+export const prompts = sqliteTable("prompts", {
+  /** Unique identifier for the prompt */
+  id: text("id").primaryKey().$defaultFn(() => randomUUID()),
+  /** Foreign key to profiles table (owner) */
+  user_id: text("user_id").references(() => profiles.id, { onDelete: 'cascade' }).notNull(),
+  /** Name of the prompt */
+  name: text("name").notNull(),
+  /** The actual prompt content/instructions */
+  content: text("content").notNull(),
+  /** Type of prompt: 'judge' for synthesizers, 'member' for council members */
+  type: text("type").notNull(), // 'judge' | 'member'
+  /** Optional description of what this prompt does */
+  description: text("description"),
+  /** Whether this is a system-provided default prompt */
+  is_system: integer("is_system", { mode: "boolean" }).default(false),
+  /** Timestamp of creation */
+  created_at: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  /** Timestamp of last update */
+  updated_at: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
+/**
  * Table schema for Councils.
  * A Council represents a group of AI models and settings.
  */
@@ -51,7 +76,9 @@ export const councils = sqliteTable("councils", {
   description: text("description"),
   /** The model ID used as the Judge */
   judge_model: text("judge_model"),
-  /** JSON string for Judge model settings */
+  /** Foreign key to prompts table for judge prompt */
+  judge_prompt_id: text("judge_prompt_id").references(() => prompts.id, { onDelete: 'set null' }),
+  /** JSON string for Judge model settings (legacy, use judge_prompt_id instead) */
   judge_settings: text("judge_settings").default('{}'),
   /** Timestamp of creation */
   created_at: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
@@ -71,9 +98,11 @@ export const councilModels = sqliteTable("council_models", {
   model_id: text("model_id").notNull(),
   /** JSON string for model specific settings */
   settings: text("settings").default('{}'),
-  /** Optional override for the system prompt */
+  /** Foreign key to prompts table for member prompt */
+  prompt_id: text("prompt_id").references(() => prompts.id, { onDelete: 'set null' }),
+  /** Optional override for the system prompt (legacy, use prompt_id instead) */
   system_prompt_override: text("system_prompt_override"),
-  /** Optional prompt template ID */
+  /** Optional prompt template ID (legacy) */
   prompt_template_id: text("prompt_template_id"),
   /** Timestamp of creation */
   created_at: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
@@ -122,8 +151,12 @@ export const messages = sqliteTable("messages", {
 });
 
 // Relations
-export const councilsRelations = relations(councils, ({ many }) => ({
+export const councilsRelations = relations(councils, ({ many, one }) => ({
   models: many(councilModels),
+  judgePrompt: one(prompts, {
+    fields: [councils.judge_prompt_id],
+    references: [prompts.id],
+  }),
 }));
 
 export const councilModelsRelations = relations(councilModels, ({ one }) => ({
@@ -131,4 +164,13 @@ export const councilModelsRelations = relations(councilModels, ({ one }) => ({
     fields: [councilModels.council_id],
     references: [councils.id],
   }),
+  prompt: one(prompts, {
+    fields: [councilModels.prompt_id],
+    references: [prompts.id],
+  }),
+}));
+
+export const promptsRelations = relations(prompts, ({ many }) => ({
+  councils: many(councils),
+  councilModels: many(councilModels),
 }));

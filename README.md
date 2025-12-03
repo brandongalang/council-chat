@@ -1,98 +1,90 @@
 # Council Chat
 
-A multi-model AI chat application where a "Council" of diverse AI models answers your query, and a "Judge" model synthesizes the best answer.
+**Council Chat** is an AI-powered deliberation platform where a "Council" of diverse AI models debates a topic, and a "Judge" model synthesizes their perspectives into a final, authoritative answer.
 
-## Overview
+![Council Chat UI](./public/council-ui-preview.png)
 
-Council Chat implements an "Agent Council" architecture. Users can select multiple AI models (e.g., GPT-4o, Claude 3.5 Sonnet, Llama 3) to process a query in parallel. A designated Judge model then reviews all responses and provides a final, synthesized answer.
+## Core Concept
 
-This project uses a **Bring Your Own Key (BYOK)** approach, storing API keys securely in the user's browser (LocalStorage).
+Instead of relying on a single AI model, Council Chat leverages the "wisdom of the crowd" (or rather, a council of experts).
+1.  **The Council**: You select a group of AI models (e.g., Claude 3.5 Sonnet, GPT-4o, Gemini 1.5 Pro), each with a specific persona or perspective (e.g., "Skeptic", "Optimist", "Technical Expert").
+2.  **The Debate**: When you ask a question, all council members generate independent responses in parallel.
+3.  **The Synthesis**: A "Judge" model (typically a high-reasoning model like GPT-4o or Claude 3.5 Sonnet) analyzes all council responses, identifies agreements and disagreements, and synthesizes a comprehensive final answer.
 
 ## Features
 
-- **Multi-Model Council**: Query multiple LLMs simultaneously.
-- **AI Judge**: Automatic synthesis of council responses.
-- **Bring Your Own Key (BYOK)**: Secure, client-side key management for various providers (OpenAI, Anthropic, Google, etc.).
-- **Real-time Streaming**: Responses are streamed in real-time using the Vercel AI SDK.
-- **Modern UI**: Built with Shadcn/UI and Tailwind CSS.
+-   **Multi-Model Council**: Configure up to 5 concurrent AI models.
+-   **Judge Synthesis**: Automatic synthesis of diverse viewpoints.
+-   **Persona Management**: Assign custom system prompts/personas to each council member.
+-   **Live Streaming**: Real-time streaming of all council responses and the final synthesis.
+-   **Analytics Dashboard**: Track token usage and estimated costs per conversation and globally.
+-   **Local-First**: All data (chats, settings) is stored locally in your browser or a local database (PostgreSQL via PGlite/Supabase local).
+-   **OpenRouter Integration**: Access hundreds of models via OpenRouter.
 
 ## Tech Stack
 
-- **Framework**: [Next.js 14+](https://nextjs.org/) (App Router)
-- **Language**: TypeScript
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
-- **UI Components**: [shadcn/ui](https://ui.shadcn.com/)
-- **Database**: [Supabase](https://supabase.com/) (PostgreSQL)
-- **ORM**: [Drizzle ORM](https://orm.drizzle.team/)
-- **Auth**: Supabase Auth
-- **AI Integration**: [Vercel AI SDK](https://sdk.vercel.ai/docs)
+-   **Framework**: Next.js 15 (App Router)
+-   **Language**: TypeScript
+-   **UI**: Tailwind CSS, Shadcn UI, Framer Motion
+-   **AI Integration**: Vercel AI SDK, OpenRouter
+-   **Database**: Drizzle ORM (PostgreSQL)
+-   **State Management**: React Hooks, URL State
 
-## Prerequisites
+## Getting Started
 
-- Node.js 18+ installed
-- A Supabase project created
+### Prerequisites
 
-## Setup & Installation
+-   Node.js 18+
+-   pnpm (recommended) or npm
+-   OpenRouter API Key
+
+### Installation
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/council-chat.git
+    git clone https://github.com/brandongalang/council-chat.git
     cd council-chat
     ```
 
 2.  **Install dependencies:**
     ```bash
-    npm install
-    # or
     pnpm install
-    # or
-    bun install
     ```
 
-3.  **Environment Variables:**
-    Create a `.env.local` file in the root directory and add the following:
+3.  **Environment Setup:**
+    Create a `.env.local` file in the root directory:
     ```env
-    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-    DATABASE_URL=your_postgres_connection_string
-    ENCRYPTION_KEY=your_32_byte_secret_key
+    OPENROUTER_API_KEY=your_api_key_here
+    DATABASE_URL=postgres://postgres:postgres@localhost:5432/council_chat
     ```
-    *Note: `ENCRYPTION_KEY` is used for server-side encryption of sensitive data if needed, though most keys are stored client-side.*
+    *(Note: If using a local Postgres, ensure it's running. Alternatively, the app supports PGlite for a zero-setup local database experience if configured.)*
 
-4.  **Database Setup:**
-    Push the schema to your Supabase database using Drizzle Kit:
+4.  **Run Database Migrations:**
     ```bash
-    npx drizzle-kit push
+    pnpm db:push
     ```
+
+5.  **Start the Development Server:**
+    ```bash
+    pnpm dev
+    ```
+
+6.  **Open the App:**
+    Navigate to `http://localhost:3000` in your browser.
 
 ## Usage
 
-Run the development server:
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser.
-
-## Project Structure
-
-```
-src/
-├── app/             # Next.js App Router pages and API routes
-├── components/      # React components
-│   ├── ui/          # Reusable UI components (shadcn/ui)
-│   └── ...          # Feature-specific components
-├── db/              # Database schema and connection configuration
-├── hooks/           # Custom React hooks
-├── lib/             # Utility functions and core logic
-│   ├── supabase/    # Supabase client configuration
-│   └── ...
-└── types/           # TypeScript type definitions
-```
+1.  **Configure Council**: Click the settings icon to select models for your council.
+2.  **Set Personas**: Assign roles (e.g., "Devil's Advocate") to each member.
+3.  **Ask a Question**: Type your prompt in the chat input.
+4.  **View Deliberation**: Watch as council members respond in parallel.
+5.  **Read Synthesis**: Review the Judge's final synthesized answer.
+6.  **Check Analytics**: Visit the Analytics tab to see token usage and costs.
 
 ## Contributing
 
-1.  Create a task in `bd` (Beads) to track your work.
-2.  Make changes and ensure documentation is updated.
-3.  Submit a Pull Request.
+Contributions are welcome! Please read `CONTRIBUTING.md` (coming soon) for details on our code of conduct and the process for submitting pull requests.
+
+## License
+
+MIT

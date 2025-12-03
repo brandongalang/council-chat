@@ -1,59 +1,71 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
-import { CouncilAccordion } from '@/components/council/council-accordion';
+import type { UseChatHelpers } from '@ai-sdk/react';
 
 import { ChatList } from '@/components/chat/chat-list';
 import { ChatInput } from '@/components/chat/chat-input';
-import { useState } from 'react';
-import { ModelSelector, CouncilMember } from '@/components/model-selector';
-import { Button } from '@/components/ui/button';
-import { Settings2, ChevronDown, ChevronUp } from 'lucide-react';
-import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ChatSidebar } from '@/components/chat-sidebar';
+import { useState, useCallback, useRef } from 'react';
+import type { CouncilMember, Model } from '@/components/model-selector';
 import { useCouncil } from '@/hooks/use-council';
 import { CouncilResponse } from '@/types/council';
-import { CouncilConfigPanel } from '@/components/chat/council-config-panel';
+import { CouncilConfigPanel, type CouncilPreset } from '@/components/chat/council-config-panel';
 import type React from 'react';
 import { useEffect } from 'react';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { Save, Trash2, Edit2, Menu } from 'lucide-react';
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { ConversationUsagePanel } from '@/components/chat/conversation-usage-panel';
+import { getLastConfig, saveLastConfig, StoredCouncilConfig } from '@/lib/config-storage';
+import { estimateTokens } from '@/lib/token-utils';
+import { getMessageContent } from '@/lib/message-utils';
+import { DEFAULT_JUDGE_PROMPT } from '@/config/prompts';
+import type { ChatMessage, MessageAnnotation } from '@/types/chat';
+
+type StoredMessage = {
+    id: string;
+    role: ChatMessage['role'];
+    content: string;
+    annotations?: string | MessageAnnotation[] | null;
+    prompt_tokens?: number | null;
+    completion_tokens?: number | null;
+    cost?: string | null;
+};
+
+const parseStoredAnnotations = (
+    value?: string | MessageAnnotation[] | null
+): MessageAnnotation[] | undefined => {
+    if (!value) return undefined;
+    if (Array.isArray(value)) return value;
+    try {
+        return JSON.parse(value) as MessageAnnotation[];
+    } catch (error) {
+        console.warn('Failed to parse stored annotations', error);
+        return undefined;
+    }
+};
+
+const transformStoredMessages = (data: StoredMessage[]): ChatMessage[] =>
+    data.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        annotations: parseStoredAnnotations(m.annotations),
+        prompt_tokens: m.prompt_tokens ?? undefined,
+        completion_tokens: m.completion_tokens ?? undefined,
+        cost: m.cost ?? undefined,
+    }));
 
 /**
- * Interface representing a chat message.
+ * Build clean message history with all content as strings
  */
-interface Message {
-    id: string;
-    role: 'system' | 'user' | 'assistant' | 'data';
-    content: string;
-    annotations?: any;
+function buildCleanHistory(messages: ChatMessage[]): Array<{ role: string; content: string }> {
+    return messages
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .map(m => ({
+            role: m.role,
+            content: getMessageContent(m)
+        }))
+        .filter(m => m.content.trim() !== '');
 }
 
 /**
@@ -66,53 +78,226 @@ interface Message {
 export default function ChatInterface() {
     const searchParams = useSearchParams();
     const router = useRouter();
-    const [mode, setMode] = useState<'solo' | 'council'>('solo');
-    const [soloModel, setSoloModel] = useState<string>('openai/gpt-4o');
-    const [councilMembers, setCouncilMembers] = useState<CouncilMember[]>([
-        { modelId: 'openai/gpt-4-turbo' },
-        { modelId: 'anthropic/claude-3-opus' }
-    ]);
-    const [judgeModel, setJudgeModel] = useState<string>('openai/gpt-4o');
-    const [isConfigOpen, setIsConfigOpen] = useState(false);
-    const [temporaryCouncilResponses, setTemporaryCouncilResponses] = useState<CouncilResponse[]>([]);
+    // Unified model selection - mode is derived from count
+    // Initialize empty, will load from localStorage
+    const [selectedModels, setSelectedModels] = useState<CouncilMember[]>([]);
+    const [judgeModel, setJudgeModel] = useState<string>('');
+    const [judgePromptId, setJudgePromptId] = useState<string | null>(null);
+    const [sourceCouncilId, setSourceCouncilId] = useState<string | null>(null);
+    const [isConfigOpen, setIsConfigOpen] = useState(true);
     const [currentChatId, setCurrentChatId] = useState<string | null>(searchParams.get('id'));
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [configLoaded, setConfigLoaded] = useState(false);
+
+    // Model metadata for context window checks
+    const [modelData, setModelData] = useState<Model[]>([]);
+
+    // Derive mode from number of selected models
+    const isCouncilMode = selectedModels.length >= 2;
+
+    // Own input state since AI SDK v2 doesn't provide it
+    const [input, setInput] = useState('');
 
     // Presets State
-    const [presets, setPresets] = useState<any[]>([]);
+    const [presets, setPresets] = useState<CouncilPreset[]>([]);
     const [presetName, setPresetName] = useState('');
     const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
 
-    // Judge Config State
-    const DEFAULT_JUDGE_PROMPT = `You are the Chief Justice of an AI Council. Your role is to synthesize the perspectives provided above into a single, authoritative response.
-
-1. **Analyze:** Briefly evaluate the strengths and weaknesses of each Council Member's argument.
-2. **Synthesize:** Merge the best insights from all members.
-3. **Decide:** Provide a final answer to the User's Query.
-
-Tone: Diplomatic but decisive. Acknowledge nuance, but do not equivocate.
-Format: Use clear headings or bullet points for the analysis if helpful, but keep the final answer direct.`;
-
     const [judgePrompt, setJudgePrompt] = useState(DEFAULT_JUDGE_PROMPT);
     const [isJudgeConfigOpen, setIsJudgeConfigOpen] = useState(false);
+    const handleJudgePromptChange = useCallback((prompt: string) => {
+        setJudgePrompt(prompt);
+        setJudgePromptId(null);
+    }, []);
 
-    const { generateCouncilResponses, isCouncilActive } = useCouncil();
+    const { generateCouncilResponses, cancelCouncilResponses, isCouncilActive } = useCouncil();
 
-    // Fetch presets on mount
+    // Ref to store council data that needs to be attached to the message after streaming
+    const pendingCouncilDataRef = useRef<{ councilResponses: CouncilResponse[]; judgeModel: string } | null>(null);
+    // State to pass council data to ChatList during streaming
+    const [streamingCouncilData, setStreamingCouncilData] = useState<{ councilResponses: CouncilResponse[]; judgeModel: string } | null>(null);
+
+    /**
+     * Stream synthesizer response from direct fetch and update message progressively
+     */
+    const streamSynthesizerResponse = async (
+        response: Response,
+        messageId: string,
+        councilResponses: CouncilResponse[],
+        usedJudgeModel: string
+    ) => {
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let fullContent = '';
+
+        if (!reader) throw new Error('No response body');
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            fullContent += chunk;
+
+            // Update message content progressively
+            setMessages(prev => {
+                const typedPrev = prev as ChatMessage[];
+                return typedPrev.map(m =>
+                    m.id === messageId
+                        ? { ...m, content: fullContent }
+                        : m
+                );
+            });
+        }
+
+        // On complete: attach annotations and estimated tokens
+        const estimatedCompletion = estimateTokens(fullContent);
+        setMessages(prev => {
+            const typedPrev = prev as ChatMessage[];
+            return typedPrev.map(m =>
+                m.id === messageId
+                    ? {
+                        ...m,
+                        content: fullContent,
+                        annotations: [councilResponses, { judgeModel: usedJudgeModel }],
+                        completion_tokens: estimatedCompletion,
+                    }
+                    : m
+            );
+        });
+
+        setStreamingCouncilData(null);
+        return fullContent;
+    };
+
+    // Fetch presets and model data on mount
     useEffect(() => {
         fetchPresets();
+        fetchModelData();
     }, []);
+
+    // Load config from localStorage on mount
+    useEffect(() => {
+        const saved = getLastConfig();
+        if (saved) {
+            if (saved.members?.length) {
+                setSelectedModels(saved.members.map((member, index) => ({
+                    instanceId: `stored-${index}-${member.modelId}-${Math.random().toString(36).slice(2, 7)}`,
+                    modelId: member.modelId,
+                    persona: member.persona,
+                })));
+            }
+            if (saved.judgeModel) {
+                setJudgeModel(saved.judgeModel);
+            }
+            if (saved.judgePromptId !== undefined) {
+                setJudgePromptId(saved.judgePromptId);
+            }
+            if (saved.judgePrompt) {
+                setJudgePrompt(saved.judgePrompt);
+            }
+            setSourceCouncilId(saved.sourceCouncilId ?? null);
+        }
+        setConfigLoaded(true);
+    }, []);
+
+    // Save config to localStorage whenever it changes (after initial load)
+    useEffect(() => {
+        if (!configLoaded) return;
+        const config: StoredCouncilConfig = {
+            judgeModel,
+            judgePromptId,
+            judgePrompt,
+            members: selectedModels.map(({ modelId, persona }) => ({ modelId, persona })),
+            sourceCouncilId,
+        };
+        saveLastConfig(config);
+    }, [selectedModels, judgeModel, judgePrompt, judgePromptId, sourceCouncilId, configLoaded]);
+
+    // Sync with URL changes (for sidebar navigation)
+    useEffect(() => {
+        const urlChatId = searchParams.get('id');
+        if (urlChatId && urlChatId !== currentChatId) {
+            // URL has a chat ID that's different from current - load it
+            setCurrentChatId(urlChatId);
+            setMessages([]);
+            fetch(`/api/chats/${urlChatId}`)
+                .then(res => res.ok ? res.json() : Promise.reject('Failed to load'))
+                .then((data: StoredMessage[]) => {
+                    const loadedMessages = transformStoredMessages(data);
+                    setMessages(loadedMessages);
+                })
+                .catch(e => console.error("Failed to load chat", e));
+        } else if (!urlChatId && currentChatId) {
+            // URL changed to /chat (no id) - clear the chat
+            setCurrentChatId(null);
+            setMessages([]);
+        }
+    }, [searchParams, currentChatId, setMessages]);
 
     const fetchPresets = async () => {
         try {
             const res = await fetch('/api/councils');
             if (res.ok) {
-                const data = await res.json();
+                const data = await res.json() as CouncilPreset[];
                 setPresets(data);
             }
         } catch (error) {
             console.error('Failed to fetch presets:', error);
         }
+    };
+
+    const fetchModelData = async () => {
+        try {
+            const res = await fetch('/api/models');
+            if (res.ok) {
+                const data = await res.json() as Model[];
+                if (Array.isArray(data)) {
+                    setModelData(data);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch model data:', error);
+        }
+    };
+
+    useEffect(() => {
+        return () => {
+            cancelCouncilResponses();
+        };
+    }, [cancelCouncilResponses]);
+
+    /**
+     * Check if the conversation would exceed any model's context window
+     * Returns null if OK, or an error message if limit exceeded
+     */
+    const checkContextLimits = (newMessage: string): string | null => {
+        // Calculate total tokens in conversation
+        const conversationText = (messages as ChatMessage[])
+            .map(m => getMessageContent(m))
+            .join('\n');
+        const totalText = conversationText + '\n' + newMessage;
+        const estimatedTokens = estimateTokens(totalText);
+
+        // Add buffer for system prompts and response (~2000 tokens)
+        const totalWithBuffer = estimatedTokens + 2000;
+
+        // Get models to check based on mode
+        const modelsToCheck = isCouncilMode
+            ? [...selectedModels.map(m => m.modelId), judgeModel]
+            : [selectedModels[0]?.modelId];
+
+        // Check each model's context limit
+        for (const modelId of modelsToCheck) {
+            const model = modelData.find(m => m.id === modelId);
+            if (model?.context_length && totalWithBuffer > model.context_length) {
+                const modelName = model.name || modelId.split('/').pop() || modelId;
+                const limit = model.context_length.toLocaleString();
+                const estimated = totalWithBuffer.toLocaleString();
+                return `Context limit exceeded for ${modelName}: ~${estimated} tokens estimated, limit is ${limit}`;
+            }
+        }
+
+        return null;
     };
 
     const handleSavePreset = async () => {
@@ -124,10 +309,10 @@ Format: Use clear headings or bullet points for the analysis if helpful, but kee
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     name: presetName,
-                    description: '',
-                    judgeModel: judgeModel,
-                    members: councilMembers, // Now sends [{modelId, persona?}]
-                    judgePrompt: judgePrompt
+                    judgeModel,
+                    judgePromptId,
+                    members: selectedModels,
+                    judgePrompt
                 })
             });
 
@@ -140,51 +325,51 @@ Format: Use clear headings or bullet points for the analysis if helpful, but kee
                 toast.error('Failed to save preset');
             }
         } catch (error) {
+            console.error('Error saving preset', error);
             toast.error('Error saving preset');
         }
     };
 
-    const handleLoadPreset = (presetId: string) => {
+    const handleApplyPreset = (presetId: string) => {
         const preset = presets.find(p => p.id === presetId);
         if (preset) {
             setJudgeModel(preset.judge_model || 'openai/gpt-4o');
 
-            // Load Judge Prompt
             try {
                 const settings = preset.judge_settings ? JSON.parse(preset.judge_settings) : {};
-                setJudgePrompt(settings.systemPrompt || '');
+                const promptContent = preset.judgePrompt?.content || settings.systemPrompt || DEFAULT_JUDGE_PROMPT;
+                setJudgePrompt(promptContent);
             } catch (e) {
                 console.error('Failed to parse judge settings', e);
-                setJudgePrompt('');
+                setJudgePrompt(DEFAULT_JUDGE_PROMPT);
             }
 
-            // Extract model IDs and personas
-            const members = preset.models.map((m: any) => ({
+            const members = (preset.models ?? []).map((m, index: number) => ({
+                instanceId: m.instanceId || m.id || `preset-${preset.id}-${index}-${Math.random().toString(36).slice(2, 7)}`,
                 modelId: m.model_id,
-                persona: m.system_prompt_override
+                persona: m.system_prompt_override || undefined
             }));
-            setCouncilMembers(members);
+            setSelectedModels(members);
+            setJudgePromptId(preset.judge_prompt_id || preset.judgePrompt?.id || null);
+            setSourceCouncilId(preset.id);
             toast.success(`Loaded preset: ${preset.name}`);
         }
     };
 
-    const handleDeletePreset = async (presetId: string, e: React.MouseEvent) => {
-        e.stopPropagation();
-        try {
-            const res = await fetch(`/api/councils/${presetId}`, { method: 'DELETE' });
-            if (res.ok) {
-                toast.success('Preset deleted');
-                fetchPresets();
-            }
-        } catch (error) {
-            toast.error('Error deleting preset');
-        }
+    const handleClearPreset = () => {
+        setSourceCouncilId(null);
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { messages, input, handleInputChange, handleSubmit: originalHandleSubmit, isLoading, stop, append, setMessages } = useChat({
+    // AI SDK v2 useChat - different API
+    const {
+        messages,
+        setMessages,
+        sendMessage,
+        stop,
+        status
+    } = useChat({
         api: '/api/chat',
-        body: { chatId: currentChatId }, // Pass current chat ID to server
+        body: { chatId: currentChatId },
         onResponse: (response: Response) => {
             const id = response.headers.get('X-Chat-Id');
             if (id && id !== currentChatId) {
@@ -192,169 +377,299 @@ Format: Use clear headings or bullet points for the analysis if helpful, but kee
                 router.replace(`/chat?id=${id}`, { scroll: false });
             }
         },
-        onFinish: (message: Message) => {
-            // If we just started a new chat, the server might return the new Chat ID.
-            // But useChat doesn't easily expose custom data from the stream unless we use onFinish with data.
-            // We are using StreamData in the server, so we can listen for it?
-            // Actually, let's just refresh the sidebar or rely on the server response if possible.
-            // For now, we rely on the fact that if we have a currentChatId, we send it.
-            // If we don't, the server creates one. We need to get it back to update the URL/State.
-            // The server sends `data` with `chat_id`.
+        onFinish: ({ message }: { message: ChatMessage }) => {
+            // Attach pending council data as annotations to the completed message
+            if (pendingCouncilDataRef.current) {
+                const { councilResponses, judgeModel: usedJudgeModel } = pendingCouncilDataRef.current;
+                pendingCouncilDataRef.current = null;
+                setStreamingCouncilData(null); // Clear streaming state so message uses its own annotations
+
+                // Update the message with annotations (council data + judge model info) AND estimated usage
+                setMessages(prevMessages => {
+                    const typedPrev = prevMessages as ChatMessage[];
+                    return typedPrev.map(m => {
+                        if (m.id !== message.id) {
+                            return m;
+                        }
+
+                        const content = getMessageContent(m);
+                        return {
+                            ...m,
+                            annotations: [councilResponses, { judgeModel: usedJudgeModel }],
+                            completion_tokens: estimateTokens(content),
+                        };
+                    });
+                });
+            } else {
+                // For non-council messages, still update usage
+                setStreamingCouncilData(null); // Clear any stale streaming state
+                setMessages(prevMessages => {
+                    const typedPrev = prevMessages as ChatMessage[];
+                    return typedPrev.map(m => {
+                        if (m.id !== message.id) {
+                            return m;
+                        }
+                        return {
+                            ...m,
+                            completion_tokens: estimateTokens(getMessageContent(m)),
+                        };
+                    });
+                });
+            }
         },
         onError: (error: Error) => {
-            toast.error("Failed to send message: " + error.message);
-        }
-    } as any) as any;
-
-    // Handle loading a chat
-    const loadChat = async (chatId: string) => {
-        setCurrentChatId(chatId);
-        setMessages([]); // Clear current
-        try {
-            const res = await fetch(`/api/chats/${chatId}`);
-            if (res.ok) {
-                const data = await res.json();
-                // Convert DB messages to AI SDK messages
-                const loadedMessages = data.map((m: any) => ({
-                    id: m.id,
-                    role: m.role,
-                    content: m.content,
-                    annotations: m.annotations ? JSON.parse(m.annotations) : undefined
-                }));
-                setMessages(loadedMessages);
+            // Filter out AI SDK tool call validation errors from OpenRouter responses
+            if (error.message?.includes('invalid_value') &&
+                (error.message?.includes('web_search_call') ||
+                 error.message?.includes('file_search_call') ||
+                 error.message?.includes('image_generation_call'))) {
+                console.warn('Suppressed AI SDK tool call validation error:', error);
+                return; // Don't show toast for these known issues
             }
-        } catch (e) {
-            console.error("Failed to load chat", e);
+            toast.error("Failed to send message: " + error.message);
+            pendingCouncilDataRef.current = null;
+            setStreamingCouncilData(null);
         }
-    };
+    } as UseChatHelpers<ChatMessage>);
 
-    const handleNewChat = () => {
-        setCurrentChatId(null);
-        setMessages([]);
-        setTemporaryCouncilResponses([]);
-    };
+    // Derive isLoading from status
+    const isLoading = status === 'streaming' || status === 'submitted';
+
+    // Handle input change
+    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setInput(e.target.value);
+    }, []);
 
     // Custom submit handler for Council logic
+    const stopAll = useCallback(() => {
+        cancelCouncilResponses();
+        stop();
+    }, [cancelCouncilResponses, stop]);
+
     const handleCouncilSubmit = async (e?: React.FormEvent) => {
         e?.preventDefault();
-        const trimmedInput = (input ?? '').trim();
-        if (!trimmedInput || isCouncilActive) return;
+        const trimmedInput = input.trim();
+        if (!trimmedInput || isCouncilActive || isLoading) return;
+
+        // Check context window limits before proceeding
+        const contextError = checkContextLimits(trimmedInput);
+        if (contextError) {
+            toast.error(contextError);
+            return;
+        }
 
         const userMessage = trimmedInput;
 
+        // Cancel any in-flight council responses before starting a new run
+        cancelCouncilResponses();
+
         // SOLO MODE: Bypass Council Logic
-        if (mode === 'solo') {
-            handleInputChange({ target: { value: '' } } as any);
-            await append({
-                role: 'user',
-                content: userMessage,
-            }, {
-                body: { model: soloModel, chatId: currentChatId }
-            });
+        if (!isCouncilMode) {
+            setInput('');
+            await sendMessage(
+                { text: userMessage },
+                { body: { model: selectedModels[0].modelId, chatId: currentChatId } }
+            );
             return;
         }
 
         // COUNCIL MODE: Require minimum 2 members
-        if (councilMembers.length < 2) {
+        if (selectedModels.length < 2) {
             toast.error('Council mode requires at least 2 members. Please add more models.');
             return;
         }
 
         // Clear input immediately for UX
-        handleInputChange({ target: { value: '' } } as any);
+        setInput('');
 
-        setTemporaryCouncilResponses([]); // Reset
+        // Create pending message ID for tracking
+        const pendingMessageId = `pending-council-${Date.now()}`;
+        const userMessageId = `user-${Date.now()}`;
 
-        // Generate Council Responses
-        // We need the current history to pass to them
-        const history = messages.map((m: Message) => ({ role: m.role, content: m.content }));
-        const userMsgObject = { role: 'user', content: userMessage } as Message;
-
-        const updatedMessages = [...history, userMsgObject];
-
-        // Start Council Deliberation
-        const councilResponses = await generateCouncilResponses(
-            updatedMessages,
-            councilMembers, // Now passing CouncilMember[]
-            (responses) => setTemporaryCouncilResponses(responses) // Real-time updates if we want to show them outside the chat list
-        );
-
-        // Prepare Context for Judge - include model name labels
-        const contextString = councilResponses.map(r => `[Model: ${r.modelId}]\n${r.content}`).join('\n\n');
-
-        // Trigger Judge (The actual Chat Item)
-        await append({
-            role: 'user',
+        // Add user message and pending assistant message to the list
+        const userMsg: ChatMessage = {
+            id: userMessageId,
+            role: 'user' as const,
             content: userMessage,
-        }, {
-            body: {
-                model: judgeModel,
-                chatId: currentChatId,
-                councilContext: contextString,
-                councilData: councilResponses,
-                judgePrompt: judgePrompt
-            }
+        };
+
+        // Initialize pending council responses
+        const initialCouncilResponses: CouncilResponse[] = selectedModels.map(m => ({
+            instanceId: m.instanceId || `${m.modelId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            modelId: m.modelId,
+            modelName: m.modelId.split('/').pop() || m.modelId,
+            status: 'loading' as const,
+            content: ''
+        }));
+
+        const pendingAssistantMsg: ChatMessage = {
+            id: pendingMessageId,
+            role: 'assistant' as const,
+            content: '',
+            annotations: [initialCouncilResponses, { judgeModel, isPending: true }]
+        };
+
+        // Add both messages to the chat
+        setMessages(prev => {
+            const typedPrev = prev as ChatMessage[];
+            return [...typedPrev, userMsg, pendingAssistantMsg];
         });
 
-        setTemporaryCouncilResponses([]); // Clear temp display once it's integrated into the message
+        // Generate Council Responses with inline updates
+        const history = (messages as ChatMessage[]).map((m) => ({
+            role: m.role,
+            content: getMessageContent(m)
+        }));
+        const userMsgObject = { role: 'user', content: userMessage };
+        const updatedMessages = [...history, userMsgObject];
+
+        const councilResponses = await generateCouncilResponses(
+            updatedMessages,
+            selectedModels,
+            (responses) => {
+                // Update the pending message's annotations with live council responses
+                setMessages(prev => {
+                    const typedPrev = prev as ChatMessage[];
+                    return typedPrev.map(m => {
+                        if (m.id === pendingMessageId) {
+                            return {
+                                ...m,
+                                annotations: [responses, { judgeModel, isPending: true }]
+                            };
+                        }
+                        return m;
+                    });
+                });
+            }
+        );
+
+        // === SYNTHESIZER: Direct fetch to avoid AI SDK format issues ===
+
+        // 1. Build clean history (exclude the pending messages)
+        const cleanHistory = buildCleanHistory(
+            (messages as ChatMessage[]).filter(m => m.id !== pendingMessageId && m.id !== userMessageId)
+        );
+
+        // 2. Format council context with labels
+        const councilContext = councilResponses.map((r, i) =>
+            `[Council Member #${i + 1}: ${r.modelName}]\n${r.content}`
+        ).join('\n\n');
+
+        // 3. Create synthesizer message ID
+        const synthesizerMsgId = `assistant-synth-${Date.now()}`;
+
+        // 4. Update state: keep user message, replace pending assistant with synthesizer placeholder
+        setMessages(prev => {
+            const typedPrev = prev as ChatMessage[];
+            const remaining = typedPrev.filter(m => m.id !== pendingMessageId);
+            const synthesizerMessage: ChatMessage = {
+                id: synthesizerMsgId,
+                role: 'assistant',
+                content: '',
+                annotations: [councilResponses, { judgeModel, isPending: false, isSynthesizing: true }]
+            };
+            return [...remaining, synthesizerMessage];
+        });
+
+        // Set streaming council data for UI
+        setStreamingCouncilData({ councilResponses, judgeModel });
+
+        try {
+            // 5. Make direct fetch to API with properly formatted messages
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: [
+                        ...cleanHistory,
+                        { role: 'user', content: userMessage }
+                    ],
+                    model: judgeModel,
+                    chatId: currentChatId,
+                    councilContext: councilContext,
+                    councilData: councilResponses,
+                    judgePrompt: judgePrompt,
+                    isJudge: true
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Synthesizer request failed: ${response.status}`);
+            }
+
+            // 6. Stream the response
+            await streamSynthesizerResponse(response, synthesizerMsgId, councilResponses, judgeModel);
+        } catch (error) {
+            const messageText = error instanceof Error ? error.message : 'Unknown error';
+            toast.error("Synthesis failed: " + messageText);
+            setStreamingCouncilData(null);
+        }
     };
+
+    // Calculate total usage stats
+    const usageStats = (messages as ChatMessage[]).reduce((acc, msg) => {
+        const promptTokens = Number(msg.prompt_tokens ?? msg.promptTokens ?? 0) || 0;
+        const completionTokens = Number(msg.completion_tokens ?? msg.completionTokens ?? 0) || 0;
+        const cost = Number(msg.cost ?? 0) || 0;
+
+        return {
+            promptTokens: acc.promptTokens + promptTokens,
+            completionTokens: acc.completionTokens + completionTokens,
+            totalTokens: acc.totalTokens + promptTokens + completionTokens,
+            cost: acc.cost + cost,
+            messageCount: acc.messageCount + (msg.role === 'assistant' ? 1 : 0),
+        };
+    }, { promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0, messageCount: 0 });
+
+    const hasUsageStats = usageStats.totalTokens > 0 || usageStats.cost > 0;
 
     return (
         <div className="flex h-[calc(100vh-4rem)]">
-            <ChatSidebar
-                currentChatId={currentChatId}
-                onSelectChat={loadChat}
-                onNewChat={handleNewChat}
-                className="hidden md:flex"
-            />
-
             <div className="flex flex-col flex-1 h-full relative">
-                <CouncilConfigPanel
-                    mode={mode}
-                    setMode={setMode}
-                    soloModel={soloModel}
-                    setSoloModel={setSoloModel}
-                    councilMembers={councilMembers}
-                    setCouncilMembers={setCouncilMembers}
+        <CouncilConfigPanel
+                    councilMembers={selectedModels}
+                    setCouncilMembers={setSelectedModels}
                     judgeModel={judgeModel}
                     setJudgeModel={setJudgeModel}
                     judgePrompt={judgePrompt}
-                    setJudgePrompt={setJudgePrompt}
+                    setJudgePrompt={handleJudgePromptChange}
+                    judgePromptId={judgePromptId}
                     defaultJudgePrompt={DEFAULT_JUDGE_PROMPT}
                     presets={presets}
-                    onLoadPreset={handleLoadPreset}
+                    sourceCouncilId={sourceCouncilId}
+                    onApplyPreset={handleApplyPreset}
+                    onClearPreset={handleClearPreset}
                     onSavePreset={handleSavePreset}
                     presetName={presetName}
                     setPresetName={setPresetName}
                     isConfigOpen={isConfigOpen}
                     setIsConfigOpen={setIsConfigOpen}
-                    isSidebarOpen={isSidebarOpen}
-                    setIsSidebarOpen={setIsSidebarOpen}
-                    currentChatId={currentChatId}
-                    onSelectChat={loadChat}
-                    onNewChat={handleNewChat}
                     isJudgeConfigOpen={isJudgeConfigOpen}
                     setIsJudgeConfigOpen={setIsJudgeConfigOpen}
                     isSaveDialogOpen={isSaveDialogOpen}
                     setIsSaveDialogOpen={setIsSaveDialogOpen}
                 />
 
-                <div className="flex-1 overflow-hidden flex flex-col relative">
-                    <ChatList messages={messages} isLoading={isLoading} />
+                {hasUsageStats && (
+                    <div className="px-6 pt-4">
+                        <ConversationUsagePanel summary={usageStats} messages={messages as ChatMessage[]} />
+                    </div>
+                )}
 
-                    {/* Council Accordion Overlay (While deliberating) */}
-                    {isCouncilActive && (
-                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t animate-in slide-in-from-bottom-10 max-h-[50vh] overflow-y-auto shadow-2xl z-20">
-                            <CouncilAccordion responses={temporaryCouncilResponses} />
-                        </div>
-                    )}
+                <div className="flex-1 overflow-hidden flex flex-col relative">
+                    <ChatList
+                        messages={messages as ChatMessage[]}
+                        isLoading={isLoading}
+                        streamingCouncilData={streamingCouncilData}
+                    />
                 </div>
                 <ChatInput
                     input={input}
                     handleInputChange={handleInputChange}
                     handleSubmit={handleCouncilSubmit}
                     isLoading={isLoading || isCouncilActive}
-                    stop={stop}
+                    stop={stopAll}
                 />
             </div>
         </div>

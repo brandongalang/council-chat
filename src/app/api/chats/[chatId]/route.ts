@@ -21,10 +21,20 @@ export async function GET(
             return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
         }
 
-        const chatMessages = await db.query.messages.findMany({
-            where: eq(messages.chat_id, chatId),
-            orderBy: [asc(messages.created_at)],
-        });
+        const chatMessages = await db
+            .select({
+                id: messages.id,
+                role: messages.role,
+                content: messages.content,
+                annotations: messages.annotations,
+                created_at: messages.created_at,
+                prompt_tokens: messages.prompt_tokens,
+                completion_tokens: messages.completion_tokens,
+                cost: messages.cost,
+            })
+            .from(messages)
+            .where(eq(messages.chat_id, chatId))
+            .orderBy(asc(messages.created_at));
 
         return NextResponse.json(chatMessages);
     } catch (err) {

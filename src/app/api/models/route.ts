@@ -1,8 +1,18 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { userApiKeys } from '@/db/schema';
 import { decrypt } from '@/lib/encryption';
 import { AppConfig } from '@/config/app-config';
+
+type OpenRouterModel = {
+  id: string;
+  name?: string;
+  context_length?: number;
+  pricing?: unknown;
+};
+
+type OpenRouterResponse = {
+  data: OpenRouterModel[];
+};
 
 export async function GET() {
   const userId = AppConfig.defaultUser.id;
@@ -24,8 +34,8 @@ export async function GET() {
         if (apiKey) {
           headers['Authorization'] = `Bearer ${apiKey}`;
         }
-      } catch (e) {
-        // Continue without auth - models endpoint is public
+      } catch (error) {
+        console.warn('Failed to decrypt OpenRouter key, continuing unauthenticated', error);
       }
     }
 
@@ -38,10 +48,10 @@ export async function GET() {
       throw new Error(`OpenRouter API error: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as OpenRouterResponse;
 
     // Transform to simpler format
-    const models = data.data.map((model: any) => ({
+    const models = data.data.map((model) => ({
       id: model.id,
       name: model.name || model.id,
       provider: model.id.split('/')[0] || 'Unknown',
@@ -50,8 +60,8 @@ export async function GET() {
     }));
 
     return NextResponse.json(models);
-  } catch (err) {
-    console.error('Error fetching models:', err);
+  } catch (error) {
+    console.error('Error fetching models:', error);
     return NextResponse.json({ error: 'Failed to fetch models' }, { status: 500 });
   }
 }

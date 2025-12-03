@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Fraunces, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster } from "@/components/ui/sonner"
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -42,7 +43,9 @@ export default function RootLayout({
       <body
         className={`${fraunces.variable} ${jetbrainsMono.variable} antialiased font-mono bg-background text-foreground selection:bg-primary/20`}
       >
-        {children}
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
         <Toaster />
       </body>
     </html>
