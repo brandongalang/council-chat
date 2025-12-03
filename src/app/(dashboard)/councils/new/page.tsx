@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -150,15 +150,15 @@ export default function NewCouncilPage() {
                             <div className="space-y-2">
                                 <Label className="font-mono text-xs uppercase">Judge Prompt</Label>
                                 <Select
-                                    value={formData.judgePromptId}
-                                    onValueChange={(value) => setFormData({ ...formData, judgePromptId: value })}
+                                    value={formData.judgePromptId || '__none__'}
+                                    onValueChange={(value) => setFormData({ ...formData, judgePromptId: value === '__none__' ? '' : value })}
                                     disabled={promptsLoading || judgePrompts.length === 0}
                                 >
                                     <SelectTrigger className="rounded-none font-mono text-xs h-10">
                                         <SelectValue placeholder={promptsLoading ? "Loading prompts..." : "No prompt (default)"} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="">No prompt (use default)</SelectItem>
+                                        <SelectItem value="__none__">No prompt (use default)</SelectItem>
                                         {judgePrompts.map((prompt) => (
                                             <SelectItem key={prompt.id} value={prompt.id}>
                                                 {prompt.name}
