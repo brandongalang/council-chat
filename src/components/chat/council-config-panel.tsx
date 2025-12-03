@@ -27,8 +27,9 @@ export interface CouncilPreset {
     name: string;
     judge_model?: string | null;
     judge_prompt_id?: string | null;
-    judgePrompt?: { id: string; name: string } | null;
-    models?: Array<{ id: string; model_id: string; system_prompt_override?: string | null }>;
+    judge_settings?: string | null;
+    judgePrompt?: { id: string; name: string; content?: string } | null;
+    models?: Array<{ id: string; instanceId?: string; model_id: string; system_prompt_override?: string | null }>;
 }
 
 interface CouncilConfigSnapshot {
@@ -212,14 +213,14 @@ export function CouncilConfigPanel({
                                 <div className="flex-1">
                                     <Label className="text-[11px] font-mono uppercase text-muted-foreground">Apply Council</Label>
                                     <Select
-                                        value={sourceCouncilId ?? ''}
-                                        onValueChange={handlePresetSelect}
+                                        value={sourceCouncilId || '__custom__'}
+                                        onValueChange={(value) => handlePresetSelect(value === '__custom__' ? '' : value)}
                                     >
                                         <SelectTrigger className="h-8 text-xs font-mono">
                                             <SelectValue placeholder="Load a Council Preset..." />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">Custom (no preset)</SelectItem>
+                                            <SelectItem value="__custom__">Custom (no preset)</SelectItem>
                                             {presets.map((preset) => (
                                                 <SelectItem key={preset.id} value={preset.id} className="text-xs font-mono">
                                                     <div className="flex items-center justify-between w-full gap-4">
