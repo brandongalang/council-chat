@@ -49,6 +49,7 @@ const transformStoredMessages = (data: StoredMessage[]): ChatMessage[] =>
         id: m.id,
         role: m.role,
         content: m.content,
+        parts: [{ type: 'text' as const, text: m.content }],
         annotations: parseStoredAnnotations(m.annotations),
         prompt_tokens: m.prompt_tokens ?? undefined,
         completion_tokens: m.completion_tokens ?? undefined,
@@ -115,6 +116,83 @@ export default function ChatInterface() {
     const pendingCouncilDataRef = useRef<{ councilResponses: CouncilResponse[]; judgeModel: string } | null>(null);
     // State to pass council data to ChatList during streaming
     const [streamingCouncilData, setStreamingCouncilData] = useState<{ councilResponses: CouncilResponse[]; judgeModel: string } | null>(null);
+
+    // AI SDK v2 useChat - MUST be declared before any code that uses setMessages
+    // Note: Using type assertion due to API changes in @ai-sdk/react v2
+    const {
+        messages,
+        setMessages,
+        sendMessage,
+        stop,
+        status
+    } = useChat({
+        // @ts-expect-error - Legacy API properties, works at runtime
+        api: '/api/chat',
+        body: { chatId: currentChatId },
+        onResponse: (response: Response) => {
+            const id = response.headers.get('X-Chat-Id');
+            if (id && id !== currentChatId) {
+                setCurrentChatId(id);
+                router.replace(`/chat?id=${id}`, { scroll: false });
+            }
+        },
+        onFinish: ({ message }: { message: ChatMessage }) => {
+            // Attach pending council data as annotations to the completed message
+            if (pendingCouncilDataRef.current) {
+                const { councilResponses, judgeModel: usedJudgeModel } = pendingCouncilDataRef.current;
+                pendingCouncilDataRef.current = null;
+                setStreamingCouncilData(null); // Clear streaming state so message uses its own annotations
+
+                // Update the message with annotations (council data + judge model info) AND estimated usage
+                setMessages(prevMessages => {
+                    const typedPrev = prevMessages as ChatMessage[];
+                    return typedPrev.map(m => {
+                        if (m.id !== message.id) {
+                            return m;
+                        }
+
+                        const content = getMessageContent(m);
+                        return {
+                            ...m,
+                            annotations: [councilResponses, { judgeModel: usedJudgeModel }],
+                            completion_tokens: estimateTokens(content),
+                        };
+                    });
+                });
+            } else {
+                // For non-council messages, still update usage
+                setStreamingCouncilData(null); // Clear any stale streaming state
+                setMessages(prevMessages => {
+                    const typedPrev = prevMessages as ChatMessage[];
+                    return typedPrev.map(m => {
+                        if (m.id !== message.id) {
+                            return m;
+                        }
+                        return {
+                            ...m,
+                            completion_tokens: estimateTokens(getMessageContent(m)),
+                        };
+                    });
+                });
+            }
+        },
+        onError: (error: Error) => {
+            // Filter out AI SDK tool call validation errors from OpenRouter responses
+            if (error.message?.includes('invalid_value') &&
+                (error.message?.includes('web_search_call') ||
+                    error.message?.includes('file_search_call') ||
+                    error.message?.includes('image_generation_call'))) {
+                console.warn('Suppressed AI SDK tool call validation error:', error);
+                return; // Don't show toast for these known issues
+            }
+            toast.error("Failed to send message: " + error.message);
+            pendingCouncilDataRef.current = null;
+            setStreamingCouncilData(null);
+        }
+    });
+
+    // Derive isLoading from status
+    const isLoading = status === 'streaming' || status === 'submitted';
 
     /**
      * Stream synthesizer response from direct fetch and update message progressively
@@ -212,27 +290,6 @@ export default function ChatInterface() {
         };
         saveLastConfig(config);
     }, [selectedModels, judgeModel, judgePrompt, judgePromptId, sourceCouncilId, configLoaded]);
-
-    // Sync with URL changes (for sidebar navigation)
-    useEffect(() => {
-        const urlChatId = searchParams.get('id');
-        if (urlChatId && urlChatId !== currentChatId) {
-            // URL has a chat ID that's different from current - load it
-            setCurrentChatId(urlChatId);
-            setMessages([]);
-            fetch(`/api/chats/${urlChatId}`)
-                .then(res => res.ok ? res.json() : Promise.reject('Failed to load'))
-                .then((data: StoredMessage[]) => {
-                    const loadedMessages = transformStoredMessages(data);
-                    setMessages(loadedMessages);
-                })
-                .catch(e => console.error("Failed to load chat", e));
-        } else if (!urlChatId && currentChatId) {
-            // URL changed to /chat (no id) - clear the chat
-            setCurrentChatId(null);
-            setMessages([]);
-        }
-    }, [searchParams, currentChatId, setMessages]);
 
     const fetchPresets = async () => {
         try {
@@ -360,80 +417,27 @@ export default function ChatInterface() {
         setSourceCouncilId(null);
     };
 
-    // AI SDK v2 useChat - different API
-    const {
-        messages,
-        setMessages,
-        sendMessage,
-        stop,
-        status
-    } = useChat({
-        api: '/api/chat',
-        body: { chatId: currentChatId },
-        onResponse: (response: Response) => {
-            const id = response.headers.get('X-Chat-Id');
-            if (id && id !== currentChatId) {
-                setCurrentChatId(id);
-                router.replace(`/chat?id=${id}`, { scroll: false });
-            }
-        },
-        onFinish: ({ message }: { message: ChatMessage }) => {
-            // Attach pending council data as annotations to the completed message
-            if (pendingCouncilDataRef.current) {
-                const { councilResponses, judgeModel: usedJudgeModel } = pendingCouncilDataRef.current;
-                pendingCouncilDataRef.current = null;
-                setStreamingCouncilData(null); // Clear streaming state so message uses its own annotations
-
-                // Update the message with annotations (council data + judge model info) AND estimated usage
-                setMessages(prevMessages => {
-                    const typedPrev = prevMessages as ChatMessage[];
-                    return typedPrev.map(m => {
-                        if (m.id !== message.id) {
-                            return m;
-                        }
-
-                        const content = getMessageContent(m);
-                        return {
-                            ...m,
-                            annotations: [councilResponses, { judgeModel: usedJudgeModel }],
-                            completion_tokens: estimateTokens(content),
-                        };
-                    });
-                });
-            } else {
-                // For non-council messages, still update usage
-                setStreamingCouncilData(null); // Clear any stale streaming state
-                setMessages(prevMessages => {
-                    const typedPrev = prevMessages as ChatMessage[];
-                    return typedPrev.map(m => {
-                        if (m.id !== message.id) {
-                            return m;
-                        }
-                        return {
-                            ...m,
-                            completion_tokens: estimateTokens(getMessageContent(m)),
-                        };
-                    });
-                });
-            }
-        },
-        onError: (error: Error) => {
-            // Filter out AI SDK tool call validation errors from OpenRouter responses
-            if (error.message?.includes('invalid_value') &&
-                (error.message?.includes('web_search_call') ||
-                 error.message?.includes('file_search_call') ||
-                 error.message?.includes('image_generation_call'))) {
-                console.warn('Suppressed AI SDK tool call validation error:', error);
-                return; // Don't show toast for these known issues
-            }
-            toast.error("Failed to send message: " + error.message);
-            pendingCouncilDataRef.current = null;
-            setStreamingCouncilData(null);
+    // Sync with URL changes (for sidebar navigation)
+    useEffect(() => {
+        const urlChatId = searchParams.get('id');
+        if (urlChatId && urlChatId !== currentChatId) {
+            // URL has a chat ID that's different from current - load it
+            setCurrentChatId(urlChatId);
+            setMessages([]);
+            fetch(`/api/chats/${urlChatId}`)
+                .then(res => res.ok ? res.json() : Promise.reject('Failed to load'))
+                .then((data: StoredMessage[]) => {
+                    const loadedMessages = transformStoredMessages(data);
+                    setMessages(loadedMessages);
+                })
+                .catch(e => console.error("Failed to load chat", e));
+        } else if (!urlChatId && currentChatId) {
+            // URL changed to /chat (no id) - clear the chat
+            setCurrentChatId(null);
+            setMessages([]);
         }
-    } as UseChatHelpers<ChatMessage>);
-
-    // Derive isLoading from status
-    const isLoading = status === 'streaming' || status === 'submitted';
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams, currentChatId]);
 
     // Handle input change
     const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -491,6 +495,7 @@ export default function ChatInterface() {
             id: userMessageId,
             role: 'user' as const,
             content: userMessage,
+            parts: [{ type: 'text' as const, text: userMessage }],
         };
 
         // Initialize pending council responses
@@ -506,6 +511,7 @@ export default function ChatInterface() {
             id: pendingMessageId,
             role: 'assistant' as const,
             content: '',
+            parts: [{ type: 'text' as const, text: '' }],
             annotations: [initialCouncilResponses, { judgeModel, isPending: true }]
         };
 
@@ -566,6 +572,7 @@ export default function ChatInterface() {
                 id: synthesizerMsgId,
                 role: 'assistant',
                 content: '',
+                parts: [{ type: 'text' as const, text: '' }],
                 annotations: [councilResponses, { judgeModel, isPending: false, isSynthesizing: true }]
             };
             return [...remaining, synthesizerMessage];
@@ -627,7 +634,7 @@ export default function ChatInterface() {
     return (
         <div className="flex h-[calc(100vh-4rem)]">
             <div className="flex flex-col flex-1 h-full relative">
-        <CouncilConfigPanel
+                <CouncilConfigPanel
                     councilMembers={selectedModels}
                     setCouncilMembers={setSelectedModels}
                     judgeModel={judgeModel}
