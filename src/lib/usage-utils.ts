@@ -57,7 +57,8 @@ export function extractUsage(response: CouncilResponse): number {
   return 0;
 }
 
-export function getTokenValue(source: Record<string, unknown> | undefined, snake: string, camel: string): number {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getTokenValue(source: any, snake: string, camel: string): number {
   const value = source?.[snake] ?? source?.[camel];
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {

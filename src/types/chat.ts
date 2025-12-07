@@ -11,6 +11,7 @@ export type MessageAnnotation = CouncilResponse[] | JudgeAnnotation;
 
 export type ChatMessage = UIMessage & {
   id: string;
+  content?: string;
   annotations?: MessageAnnotation[];
   prompt_tokens?: number;
   promptTokens?: number;

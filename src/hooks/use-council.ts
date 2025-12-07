@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
-import { UIMessage as Message } from '@ai-sdk/react';
 import { CouncilResponse } from '@/types/council';
+
+type SimpleMessage = { role: string; content: string };
 import { CouncilMember } from '@/components/model-selector';
 import { estimateTokens } from '@/lib/token-utils';
 import { getMessageContent } from '@/lib/message-utils';
@@ -45,7 +46,7 @@ export function useCouncil() {
      * @returns A promise that resolves to the final array of CouncilResponses.
      */
     const generateCouncilResponses = async (
-        messages: Message[],
+        messages: SimpleMessage[],
         members: CouncilMember[],
         onUpdate: (responses: CouncilResponse[]) => void
     ) => {
