@@ -34,6 +34,24 @@
   --ring: 214 31% 26%;
 
   --radius: 0rem; /* Brutalist sharp corners */
+
+  /* Action Colors - Use Sealing Wax Red for primary CTAs */
+  --action: 10 58% 51%;
+  --action-foreground: 38 20% 96%;
+
+  /* Section Backgrounds - Subtle tints for visual zones */
+  --section-primary: 10 30% 96%;    /* Very subtle warm tint */
+  --section-secondary: 214 20% 95%; /* Very subtle blue tint */
+  --section-tertiary: 38 15% 93%;   /* Slightly darker alabaster */
+
+  /* Status Colors - Semantic colors for states */
+  --status-loading: 38 70% 50%;
+  --status-streaming: 214 50% 45%;
+  --status-success: 150 50% 40%;
+
+  /* Council Accent - Subtle member differentiation */
+  --council-accent: 10 58% 51%;
+  --council-border: 10 30% 80%;
   
   /* Chart colors re-mapped to aesthetic */
   --chart-1: 214 31% 26%;
@@ -81,7 +99,25 @@
   --border: 220 15% 20%;
   --input: 220 15% 20%;
   --ring: 38 20% 96%;
-  
+
+  /* Action Colors - Brighter red for dark mode */
+  --action: 10 58% 60%;
+  --action-foreground: 220 15% 10%;
+
+  /* Section Backgrounds - Subtle tints for dark mode */
+  --section-primary: 10 20% 12%;    /* Very subtle warm tint */
+  --section-secondary: 214 20% 12%; /* Very subtle blue tint */
+  --section-tertiary: 220 15% 14%;  /* Slightly lighter slate */
+
+  /* Status Colors - Brighter for dark mode */
+  --status-loading: 38 75% 60%;
+  --status-streaming: 214 55% 60%;
+  --status-success: 150 50% 55%;
+
+  /* Council Accent - Red for dark mode */
+  --council-accent: 10 58% 60%;
+  --council-border: 10 30% 30%;
+
   --chart-1: 220 70% 50%;
   --chart-2: 160 60% 45%;
   --chart-3: 30 80% 55%;
@@ -135,7 +171,20 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  
+
+  /* Action colors */
+  --color-action: var(--action);
+  --color-action-foreground: var(--action-foreground);
+
+  /* Status colors */
+  --color-status-loading: var(--status-loading);
+  --color-status-streaming: var(--status-streaming);
+  --color-status-success: var(--status-success);
+
+  /* Council accent */
+  --color-council-accent: var(--council-accent);
+  --color-council-border: var(--council-border);
+
   --font-sans: var(--font-fraunces), ui-serif, Georgia, serif;
   --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }

@@ -40,7 +40,7 @@ function SynthesisStatusBadge({
 }) {
   if (isPending) {
     return (
-      <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-amber-500/50 text-amber-600">
+      <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-[hsl(var(--status-loading)/0.5)] text-[hsl(var(--status-loading))]">
         <Loader2 className="w-3 h-3 animate-spin" />
         Awaiting
       </Badge>
@@ -48,7 +48,7 @@ function SynthesisStatusBadge({
   }
   if (isStreaming && !hasAnswer) {
     return (
-      <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-blue-500/50 text-blue-600 animate-pulse">
+      <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-[hsl(var(--status-streaming)/0.5)] text-[hsl(var(--status-streaming))] animate-pulse">
         <Loader2 className="w-3 h-3 animate-spin" />
         Analyzing
       </Badge>
@@ -56,14 +56,14 @@ function SynthesisStatusBadge({
   }
   if (isStreaming && hasAnswer) {
     return (
-      <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-blue-500/50 text-blue-600 animate-pulse">
+      <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-[hsl(var(--status-streaming)/0.5)] text-[hsl(var(--status-streaming))] animate-pulse">
         <Loader2 className="w-3 h-3 animate-spin" />
         Writing
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-green-500/50 text-green-600">
+    <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-[hsl(var(--status-success)/0.5)] text-[hsl(var(--status-success))]">
       <CheckCircle2 className="w-3 h-3" />
       Done
     </Badge>
@@ -143,7 +143,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         </div>
         <div className="flex-1 space-y-4 overflow-hidden max-w-3xl">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-bold uppercase text-muted-foreground">
+            <span className="font-mono text-[10px] font-bold uppercase text-muted-foreground">
               Council Synthesis
             </span>
           </div>
@@ -152,7 +152,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <div className="space-y-3">
             <div className="flex items-center gap-2 py-2">
               <Gavel className="h-4 w-4 text-muted-foreground" />
-              <span className="font-mono text-xs font-bold uppercase text-muted-foreground">
+              <span className="font-mono text-[10px] font-bold uppercase text-muted-foreground">
                 Synthesis
               </span>
               <SynthesisStatusBadge isPending={false} isStreaming={true} hasAnswer={!!parsedContent?.answer} />
@@ -161,7 +161,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
             {/* Show reasoning collapsible if available */}
             {parsedContent?.reasoning && (
               <Collapsible open={isReasoningOpen} onOpenChange={setIsReasoningOpen}>
-                <CollapsibleTrigger className="flex items-center gap-2 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors py-2 px-3 bg-primary/5 border border-primary/20 w-full">
+                <CollapsibleTrigger className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors py-2 px-3 bg-primary/5 border border-primary/20 w-full">
                   <Brain className="h-3 w-3" />
                   <span className="uppercase tracking-wider">Reasoning</span>
                   <SynthesisStatusBadge
@@ -194,7 +194,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 <Separator className="my-2" />
                 <div className="flex items-center gap-2 py-2">
                   <Gavel className="h-4 w-4 text-primary" />
-                  <span className="font-mono text-xs font-bold uppercase text-primary">
+                  <span className="font-mono text-[10px] font-bold uppercase text-primary">
                     Synthesis
                   </span>
                   <SynthesisStatusBadge isPending={false} isStreaming={!parsedContent.answerComplete} hasAnswer={true} />
@@ -249,10 +249,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
           "flex items-center gap-2",
           isUser && "flex-row-reverse"
         )}>
-          <span className="font-mono text-xs font-bold uppercase text-muted-foreground">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
             {isUser ? 'User' : isCouncilResponse ? 'Council Synthesis' : 'System / Agent'}
           </span>
-          <span className="font-mono text-xs text-muted-foreground/50">
+          <span className="font-mono text-[10px] text-muted-foreground/50">
             {typedMessage.createdAt ? new Date(typedMessage.createdAt).toLocaleTimeString() : ''}
           </span>
         </div>
@@ -270,12 +270,12 @@ export function ChatMessage({ message }: ChatMessageProps) {
             <Separator className="my-2" />
             <div className="flex items-center gap-2 py-2">
               <Gavel className="h-4 w-4 text-muted-foreground" />
-              <span className="font-mono text-xs font-bold uppercase text-muted-foreground">
+              <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 Synthesis
               </span>
               <SynthesisStatusBadge isPending={true} isStreaming={false} hasAnswer={false} />
             </div>
-            <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground py-2">
+            <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground py-2">
               <div className="h-2 w-2 bg-primary rounded-full animate-bounce" />
               <div className="h-2 w-2 bg-primary rounded-full animate-bounce delay-75" />
               <div className="h-2 w-2 bg-primary rounded-full animate-bounce delay-150" />
@@ -289,7 +289,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         {!isPending && (isSynthesizing || (parsedContent?.hasTags && parsedContent.reasoning)) && (
           <div className="space-y-3">
             <Collapsible open={isReasoningOpen} onOpenChange={setIsReasoningOpen}>
-              <CollapsibleTrigger className="flex items-center gap-2 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors py-2 px-3 bg-primary/5 border border-primary/20 w-full">
+              <CollapsibleTrigger className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors py-2 px-3 bg-primary/5 border border-primary/20 w-full">
                 <Brain className="h-3 w-3" />
                 <span className="uppercase tracking-wider">Reasoning</span>
                 <SynthesisStatusBadge
@@ -337,12 +337,12 @@ export function ChatMessage({ message }: ChatMessageProps) {
             <div className="flex items-center justify-between py-2">
               <div className="flex items-center gap-2">
                 <Gavel className="h-4 w-4 text-primary" />
-                <span className="font-mono text-xs font-bold uppercase text-primary">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-primary">
                   Synthesis
                 </span>
                 <SynthesisStatusBadge isPending={false} isStreaming={isStreaming} hasAnswer={!!displayContent} />
                 {judgeModelInfo?.judgeModel && (
-                  <span className="font-mono text-xs text-muted-foreground">
+                  <span className="font-mono text-[10px] text-muted-foreground">
                     via {judgeModelInfo.judgeModel.split('/').pop()}
                   </span>
                 )}

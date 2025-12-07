@@ -23,16 +23,16 @@ export function CouncilAccordion({ responses }: CouncilAccordionProps) {
 
   return (
     <div className="w-full max-w-3xl border rounded-md my-4 bg-background/50">
-      <div className="px-4 py-2 border-b bg-muted/30 text-xs font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+      <div className="px-4 py-2 border-b bg-muted/30 text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
         <Bot className="w-3 h-3" />
         Council Deliberation
       </div>
       <Accordion type="multiple" className="w-full" defaultValue={defaultValues}>
         {responses.map((response) => (
           <AccordionItem key={response.instanceId} value={response.instanceId} className="border-b last:border-0">
-            <AccordionTrigger className="px-4 py-2 hover:no-underline hover:bg-muted/20 text-sm group">
+            <AccordionTrigger className="px-4 py-2 hover:no-underline hover:bg-muted/20 text-sm group data-[state=open]:border-l-2 data-[state=open]:border-[hsl(var(--council-accent))]">
               <div className="flex items-center justify-between w-full pr-2">
-                <span className="font-medium font-serif flex items-center gap-2">
+                <span className="font-sans font-semibold flex items-center gap-2 text-[hsl(var(--council-accent))]">
                   {response.modelName}
                 </span>
                 <StatusBadge status={response.status} />
@@ -40,7 +40,7 @@ export function CouncilAccordion({ responses }: CouncilAccordionProps) {
             </AccordionTrigger>
             <AccordionContent className="px-4 py-3 bg-background/30">
               <div className="max-h-[500px] overflow-y-auto pr-2">
-                <div className="prose prose-neutral dark:prose-invert max-w-none text-xs font-sans leading-relaxed text-muted-foreground overflow-x-auto">
+                <div className="prose prose-neutral dark:prose-invert max-w-none text-sm font-sans leading-relaxed text-muted-foreground overflow-x-auto">
                   {response.content ? (
                     <Streamdown>{sanitizeCustomTags(response.content)}</Streamdown>
                   ) : (
@@ -60,21 +60,21 @@ function StatusBadge({ status }: { status: CouncilResponse['status'] }) {
   switch (status) {
     case 'loading':
       return (
-        <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-amber-500/50 text-amber-600">
+        <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-[hsl(var(--status-loading)/0.5)] text-[hsl(var(--status-loading))]">
           <Loader2 className="w-3 h-3 animate-spin" />
           Thinking
         </Badge>
       )
     case 'streaming':
       return (
-        <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-blue-500/50 text-blue-600 animate-pulse">
+        <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-[hsl(var(--status-streaming)/0.5)] text-[hsl(var(--status-streaming))] animate-pulse">
           <Loader2 className="w-3 h-3 animate-spin" />
           Speaking
         </Badge>
       )
     case 'completed':
       return (
-        <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-green-500/50 text-green-600">
+        <Badge variant="outline" className="font-mono text-[10px] h-5 gap-1 border-[hsl(var(--status-success)/0.5)] text-[hsl(var(--status-success))]">
           <CheckCircle2 className="w-3 h-3" />
           Done
         </Badge>
