@@ -36,6 +36,11 @@ yarn-error.log*
 # auto-generated encryption key (local-only security)
 .encryption-key
 
+# Local SQLite database (contains personal chat history)
+*.db
+local.db
+sqlite.db
+
 # agent instruction files (personal config)
 AGENTS.md
 CLAUDE.md
