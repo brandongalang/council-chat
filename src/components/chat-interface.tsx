@@ -549,6 +549,18 @@ export default function ChatInterface() {
             }
         );
 
+        // Validate: ensure enough council members completed successfully before synthesis
+        const completedResponses = councilResponses.filter(r => r.status === 'completed');
+        if (completedResponses.length < 2) {
+            toast.error(`Only ${completedResponses.length} council member(s) responded. Need at least 2 to synthesize.`);
+            // Remove the pending message since we can't synthesize
+            setMessages(prev => {
+                const typedPrev = prev as ChatMessage[];
+                return typedPrev.filter(m => m.id !== pendingMessageId);
+            });
+            return;
+        }
+
         // === SYNTHESIZER: Direct fetch to avoid AI SDK format issues ===
 
         // 1. Build clean history (exclude the pending messages)
@@ -556,8 +568,8 @@ export default function ChatInterface() {
             (messages as ChatMessage[]).filter(m => m.id !== pendingMessageId && m.id !== userMessageId)
         );
 
-        // 2. Format council context with labels
-        const councilContext = councilResponses.map((r, i) =>
+        // 2. Format council context with labels (only completed responses)
+        const councilContext = completedResponses.map((r, i) =>
             `[Council Member #${i + 1}: ${r.modelName}]\n${r.content}`
         ).join('\n\n');
 
